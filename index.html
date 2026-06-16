@@ -143,12 +143,15 @@ body.viewmode .viewnote{display:block}
 .plate.pc-black{background:#1A1A1A;color:#fff}
 .plate.pc-grey{background:#8A979C;color:#fff}
 .plate.pc-white{background:#fff;color:#1A1A1A;box-shadow:inset 0 0 0 1px #CBD5D8}
+.plate.pc-red{background:#ED1C24;color:#fff}
 /* moto-row plate variant keeps same colours */
+.mplate{font-size:12.5px;font-weight:800;min-width:46px;text-align:center;padding:3px 6px;border-radius:5px;font-variant-numeric:tabular-nums}
 .mplate.pc-yellow{background:#F5C518;color:#1A1A1A}
 .mplate.pc-blue{background:#1565C0;color:#fff}
 .mplate.pc-black{background:#1A1A1A;color:#fff}
 .mplate.pc-grey{background:#8A979C;color:#fff}
 .mplate.pc-white{background:#fff;color:#1A1A1A;box-shadow:inset 0 0 0 1px #CBD5D8}
+.mplate.pc-red{background:#ED1C24;color:#fff}
 .edit-plate{cursor:pointer;position:relative}
 .edit-plate::after{content:'';position:absolute;right:-3px;top:-3px;width:7px;height:7px;border-radius:50%;background:var(--teal);border:1.5px solid #fff}
 .cls{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px}
@@ -158,6 +161,9 @@ body.viewmode .viewnote{display:block}
 .cls.Junior{background:#1A1A1A;color:#fff}
 .cls.U23{background:#8A979C;color:#fff}
 .cls.Elite{background:#fff;color:#1A1A1A;box-shadow:inset 0 0 0 1px #CBD5D8}
+.cls.Cruiser{background:#ED1C24;color:#fff}
+.cls.cls-cruiser{background:#ED1C24;color:#fff;margin-left:4px}
+.cruiser-toggle{color:var(--teal);font-weight:700;cursor:pointer}
 
 /* Motos */
 .moto{background:#fff;border:1px solid var(--line);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
@@ -171,8 +177,6 @@ body.viewmode .viewnote{display:block}
 .mrow{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--line-soft)}
 .mrow:last-child{border-bottom:none}
 .mrow.sel{background:var(--teal-tint);box-shadow:inset 3px 0 0 var(--teal)}
-.mrow .mplate{font-size:12.5px;font-weight:700;min-width:46px;text-align:center;background:#F0F2F3;
-  border-radius:5px;padding:3px 4px;font-variant-numeric:tabular-nums}
 .mrow .mname{font-size:13.5px;font-weight:600;flex:1}
 .mrow .tag{font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--int-bg);color:var(--int)}
 .mrow .age{font-size:11px;color:var(--muted-soft)}
@@ -408,9 +412,10 @@ td.tot{font-weight:800;text-align:right}
         <div class="field"><label>Sex</label><select id="aSex"><option>Male</option><option>Female</option></select></div>
       </div>
       <div class="grid2">
-        <div class="field"><label>Class</label><select id="aClass"><option>Novice</option><option>Intermediate</option><option>Expert</option><option>Junior</option><option>U23</option><option>Elite</option></select></div>
+        <div class="field"><label>Class</label><select id="aClass"><option>Novice</option><option>Intermediate</option><option>Expert</option><option>Junior</option><option>U23</option><option>Elite</option><option>Cruiser</option></select></div>
         <div class="field"><label>Plate</label><input id="aPlate" type="text" placeholder="e.g. 083 or SK4"></div>
       </div>
+      <div class="field"><label style="display:flex;align-items:center;gap:8px;text-transform:none;font-weight:400;font-size:14px;color:var(--ink)"><input id="aCruiser" type="checkbox" style="width:auto">Also races Cruiser (red plate)</label></div>
       <button class="btn primary" id="addRiderBtn" style="width:100%;justify-content:center">Add rider</button>
     </div>
 
@@ -613,7 +618,7 @@ function riderRow(r){
     '<div class="chk"><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 6"/></svg></div>'+
     '<div><div class="rname">'+esc(r.first)+' '+esc(r.last)+'</div>'+
     '<div class="rmeta">'+esc(r.category)+' · age '+r.age+'</div></div>'+
-    '<span class="cls '+r.cls+'">'+r.cls+'</span>'+
+    '<span class="cls '+r.cls+'">'+r.cls+'</span>'+cruiserTag(r)+
     '<span class="plate '+plateClass(r)+' edit-plate" data-edit="'+r.riderId+'" title="Tap to change plate">'+esc(r.plate)+'</span></div>';
 }
 function toggleIn(id){
@@ -642,16 +647,21 @@ document.getElementById('resetMotos').addEventListener('click', ()=>{ MOTOS=[]; 
 function buildMotos(){
   const ci=RIDERS.filter(r=>r.checkedIn);
   if(ci.length<2){ toast('Check in at least 2 riders first','bad'); return; }
-  // assign effective category (Experts bump up one age group)
+  // assign effective category (Experts bump up one age group; Cruiser-only ride their own group)
   const groups={};
   ci.forEach(r=>{
     let cat=r.category, bumped=false;
-    if(r.cls==='Expert'){ const nc=nextCat(r.category,r.sex); if(nc!==r.category){ cat=nc; bumped=true; } }
+    if((r.cls||'')==='Cruiser'){
+      cat='Cruiser';                       // cruiser-only riders group together, separate from 20"
+    } else if(r.cls==='Expert'){
+      const nc=nextCat(r.category,r.sex); if(nc!==r.category){ cat=nc; bumped=true; }
+    }
     (groups[cat]=groups[cat]||[]).push(Object.assign({},r,{bumped, raceCat:cat}));
   });
   MOTOS=[];
   const flagged=[];
-  ALL_CATS.forEach(cat=>{
+  const catOrder = ALL_CATS.concat(['Cruiser']);   // Cruiser motos build last
+  catOrder.forEach(cat=>{
     const g=groups[cat]; if(!g||!g.length) return;
     g.sort((a,b)=> a.age-b.age || (a.last||'').localeCompare(b.last||''));
     if(g.length===1){ flagged.push({cat,rider:g[0]}); return; }
@@ -710,7 +720,7 @@ function renderMotos(){
           (r.bumped?' <span class="tag">bumped</span>':'')+
           (hint&&hint!==m.cat?' <span class="tag" style="background:var(--teal-tint);color:var(--teal)">last: '+esc(hint)+'</span>':'')+
         '</span>'+
-        '<span class="cls '+r.cls+'">'+r.cls+'</span>'+
+        '<span class="cls '+r.cls+'">'+r.cls+'</span>'+cruiserTag(r)+
         '<span class="age">'+r.age+'y</span>'+
         '<span class="mv" data-mvfrom="'+mi+'" data-mvr="'+ri+'">Move</span>'+
         '</div>';
@@ -995,12 +1005,14 @@ document.getElementById('adminPass').addEventListener('keydown', e=>{ if(e.key==
 document.getElementById('addRiderBtn').addEventListener('click', addRider);
 async function addRider(){
   const first=val('aFirst'), last=val('aLast'), birth=val('aBirth'), sex=val('aSex'), cls=val('aClass'), plate=val('aPlate');
+  const cruiser=document.getElementById('aCruiser').checked;
   if(!first||!last||!birth){ toast('First, last and birth year are required','bad'); return; }
   const btn=document.getElementById('addRiderBtn'); btn.disabled=true; btn.textContent='Adding…';
   try{
-    await apiPost('addRider', {rider:{first,last,birthYear:+birth,sex,cls,plate}});
+    await apiPost('addRider', {rider:{first,last,birthYear:+birth,sex,cls,plate,cruiser}});
     toast(first+' '+last+' added ✓','ok');
     ['aFirst','aLast','aBirth','aPlate'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('aCruiser').checked=false;
     const d=await apiGet('bootstrap');
     RIDERS=(d.riders||[]).map(r=>Object.assign({},r,{checkedIn:false}));
     renderCheckin(); renderStats(); renderRoster();
@@ -1013,12 +1025,14 @@ function renderRoster(){
   const list=RIDERS.slice().sort((a,b)=>a.age-b.age||(a.last||'').localeCompare(b.last||''));
   wrap.innerHTML = list.map(r=>
     '<div class="admin-rider"><div><div class="rname">'+esc(r.first)+' '+esc(r.last)+'</div>'+
-    '<div class="rmeta">'+esc(r.category)+' · '+r.cls+'</div></div>'+
+    '<div class="rmeta">'+esc(r.category)+' · '+r.cls+
+      ' · <span class="cruiser-toggle" data-cruiser="'+r.riderId+'">'+(r.cruiser?'\u2713 Cruiser':'+ Cruiser')+'</span></div></div>'+
     '<span class="plate '+plateClass(r)+' edit-plate" data-edit="'+r.riderId+'" title="Tap to change plate">'+esc(r.plate)+'</span>'+
     '<span class="cls '+r.cls+' edit-class" data-class="'+r.riderId+'" title="Tap to change class">'+r.cls+'</span></div>'
   ).join('');
   wrap.querySelectorAll('.edit-plate').forEach(el=> el.addEventListener('click',()=> editPlate(el.dataset.edit)));
   wrap.querySelectorAll('.edit-class').forEach(el=> el.addEventListener('click',()=> editClass(el.dataset.class)));
+  wrap.querySelectorAll('.cruiser-toggle').forEach(el=> el.addEventListener('click',()=> toggleCruiser(el.dataset.cruiser)));
 }
 async function loadSeasons(){
   try{
@@ -1082,7 +1096,10 @@ const HELP_TOPICS = [
     <p>Tap any rider's plate badge — on Check-in or in the Admin roster — and type the new plate. Leading zeros (083) are kept.</p>
     <h4>Change a class</h4>
     <p>Tap the colored class badge in the Admin roster, pick the new class. Use this as riders move up.</p>
-    <div class="tip"><b>Classes:</b> Novice (green) · Intermediate (amber) · Expert (green) · Junior (red) · U23 (blue) · Elite (black). Club points are by age group — class just helps blend motos by skill.</div>
+    <div class="tip"><b>Classes:</b> Novice (green) · Intermediate (amber) · Expert (green) · Junior (black) · U23 (grey) · Elite (white). Club points are by age group — class just helps blend motos by skill.</div>
+    <h4>Cruiser riders</h4>
+    <p>Cruiser is a separate flag, not a class — a rider keeps their 20&#8243; class and is also marked Cruiser. In the Admin roster, tap <b>+ Cruiser</b> beside a rider to toggle it (or tick the box when adding a rider). Cruiser riders show a <b>red plate and a red Cruiser tag</b> everywhere, so they stand out when blended into a moto.</p>
+    <p><b>Cruiser-only riders</b> (no 20&#8243; class): set their <b>class to Cruiser</b> instead of ticking the box. They show a red plate and build into their own Cruiser moto — tap <b>Move</b> to blend them into another moto as needed.</p>
     <h4>Age &amp; category</h4>
     <p>You never type age. The app uses <b>race age = season year − birth year</b> and sorts riders into categories automatically, every season. That's why birth year matters and age doesn't.</p>
   `},
@@ -1154,7 +1171,19 @@ function renderHelp(){
    Utils
    ============================================================ */
 /* ---- Class editing (Admin roster) ---- */
-const CLASSES=['Novice','Intermediate','Expert','Junior','U23','Elite'];
+const CLASSES=['Novice','Intermediate','Expert','Junior','U23','Elite','Cruiser'];
+async function toggleCruiser(riderId){
+  const r=RIDERS.find(x=>x.riderId===riderId);
+  if(!r) return;
+  const next=!r.cruiser;
+  try{
+    await apiPost('updateRider', {rider:{riderId:riderId, cruiser:next}});
+    r.cruiser=next;
+    MOTOS.forEach(m=> m.riders.forEach(mr=>{ if(mr.riderId===riderId) mr.cruiser=next; }));
+    renderRoster(); renderCheckin(); renderMotos(); renderScoring();
+    toast(r.first+(next?' marked Cruiser':' \u2014 Cruiser removed'),'ok');
+  }catch(e){ toast('Could not update: '+e.message,'bad'); }
+}
 async function editClass(riderId){
   const r=RIDERS.find(x=>x.riderId===riderId);
   if(!r) return;
@@ -1204,15 +1233,21 @@ async function editPlate(riderId){
 }
 
 function val(id){ return document.getElementById(id).value.trim(); }
-/* UCI plate colour: Junior=black, U23=grey, Elite=white;
+/* a rider is "cruiser" if flagged OR their class is Cruiser */
+function isCruiser(r){ return !!r.cruiser || (r.cls||'')==='Cruiser'; }
+/* UCI plate colour: Cruiser=red (any sex); Junior=black, U23=grey, Elite=white;
    Challenge (Novice/Int/Expert) = yellow if male, blue if female */
 function plateClass(r){
+  if(isCruiser(r)) return 'pc-red';
   const c=(r.cls||'').toLowerCase();
   if(c==='junior') return 'pc-black';
   if(c==='u23')    return 'pc-grey';
   if(c==='elite')  return 'pc-white';
   return (String(r.sex||'').toLowerCase()[0]==='f') ? 'pc-blue' : 'pc-yellow';
 }
+/* red Cruiser tag for riders who ALSO race cruiser (have a 20" class + flag).
+   Cruiser-only riders already show "Cruiser" as their class badge, so no extra tag. */
+function cruiserTag(r){ return (r.cruiser && (r.cls||'')!=='Cruiser') ? '<span class="cls cls-cruiser">Cruiser</span>' : ''; }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 let toastTimer;
 function toast(msg,kind){
