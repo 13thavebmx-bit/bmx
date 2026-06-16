@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>13th Ave BMX — Race Manager</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Anton&display=swap');
+/* ============================================================
+   13th Ave BMX — Race Manager
+   Single-file app. Talks to a Google Apps Script backend.
+   Brand: teal #0098B8 · red #ED1C24 · ink #1A1A1A
+   ============================================================ */
+:root{
+  --teal:#0098B8; --teal-dark:#007e99; --teal-tint:#E8F6FA;
+  --red:#ED1C24; --ink:#1A1A1A; --paper:#FFFFFF;
+  --line:#E2E6E8; --line-soft:#EEF1F3;
+  --muted:#5C6B70; --muted-soft:#8A979C;
+  --ok:#1f8a4c; --ok-tint:#E7F4EC;
+  --warn:#9A6700; --warn-tint:#FFF6E0;
+  --bad:#B42318; --bad-tint:#FDECEA;
+  --nov:#0C447C;  --nov-bg:#E6F1FB;
+  --int:#633806;  --int-bg:#FAEEDA;
+  --exp:#9E1115;  --exp-bg:#FCDCDD;
+  --radius:12px; --radius-sm:8px;
+  --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.10);
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{font-family:var(--font);background:#F4F6F7;color:var(--ink);font-size:15px;line-height:1.4;
+  -webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom)}
+.wrap{max-width:760px;margin:0 auto;min-height:100%;background:#F4F6F7}
+
+/* Header */
+.head{background:var(--teal);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px;
+  position:sticky;top:0;z-index:40;box-shadow:var(--shadow)}
+.logo{height:54px;display:flex;align-items:center;flex-shrink:0}
+.logo img{height:100%;width:auto;display:block}
+.head-txt{display:flex;align-items:center}
+.head-title{font-family:'Anton',var(--font);font-weight:400;color:#fff;line-height:1;
+  font-size:22px;letter-spacing:.4px;text-transform:uppercase;text-shadow:0 1px 2px rgba(0,0,0,.18);white-space:nowrap}
+@media(max-width:480px){.head-title{font-size:16px;letter-spacing:.2px}}
+@media(max-width:360px){.head-title{font-size:14px}}
+.head-txt h1{font-size:16px;font-weight:800;letter-spacing:.3px;line-height:1.1}
+.head-txt p{font-size:11px;color:#CDEFF6;letter-spacing:.08em;text-transform:uppercase;margin-top:2px}
+.head-right{margin-left:auto;text-align:right;font-size:11px;color:#CDEFF6}
+.mode-chip{margin-top:5px;font-family:var(--font);font-size:11px;font-weight:800;letter-spacing:.04em;
+  border:none;border-radius:20px;padding:4px 11px 4px 9px;cursor:pointer;display:inline-flex;align-items:center;gap:5px}
+.mode-chip::before{content:'';width:7px;height:7px;border-radius:50%;display:inline-block}
+.mode-chip.view{background:rgba(255,255,255,.18);color:#fff}
+.mode-chip.view::before{background:#CDEFF6}
+.mode-chip.run{background:#fff;color:var(--teal)}
+.mode-chip.run::before{background:#1FA84A;box-shadow:0 0 0 3px rgba(31,168,74,.3)}
+
+/* Read-only (View mode): disable interactive controls */
+body.viewmode .row,
+body.viewmode .scorerow,
+body.viewmode .mv,
+body.viewmode .move-chip,
+body.viewmode .edit-plate,
+body.viewmode .edit-class,
+body.viewmode [data-lock],
+body.viewmode [data-clr]{pointer-events:none}
+body.viewmode .edit-plate::after{display:none}
+body.viewmode .row .chk{opacity:.35}
+body.viewmode #buildMotos,
+body.viewmode #resetMotos,
+body.viewmode .bottombar,
+body.viewmode .mv,
+body.viewmode .rounds{display:none !important}
+.viewnote{display:none;background:var(--teal-tint);color:var(--teal);font-size:12.5px;font-weight:600;
+  padding:9px 13px;border-radius:var(--radius-sm);margin-bottom:12px;text-align:center}
+body.viewmode .viewnote{display:block}
+.conn{display:inline-flex;align-items:center;gap:5px;font-size:11px}
+.dot{width:8px;height:8px;border-radius:50%;background:#7CC9D9}
+.dot.live{background:#5BE08A;box-shadow:0 0 0 3px rgba(91,224,138,.25)}
+.dot.err{background:#FF6B6B;box-shadow:0 0 0 3px rgba(255,107,107,.25)}
+
+/* Tabs */
+.tabs{display:flex;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:70px;z-index:30;overflow-x:auto}
+.tab{flex:1;min-width:72px;padding:11px 6px 9px;border:none;background:none;font-family:var(--font);
+  font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;
+  display:flex;flex-direction:column;align-items:center;gap:3px;white-space:nowrap}
+.tab svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8}
+.tab.on{color:var(--teal);border-bottom-color:var(--red)}
+.tab .pill{position:absolute;transform:translate(18px,-8px);background:var(--red);color:#fff;
+  font-size:10px;font-weight:700;min-width:17px;height:17px;border-radius:9px;display:flex;
+  align-items:center;justify-content:center;padding:0 4px}
+.tab-wrap{position:relative}
+
+/* Sections */
+.sec{display:none;padding:14px 14px 90px}
+.sec.on{display:block}
+.sec-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:10px}
+.sec-head h2{font-size:17px;font-weight:800}
+.sec-head .sub{font-size:12px;color:var(--muted)}
+
+/* Buttons */
+.btn{font-family:var(--font);font-size:14px;font-weight:600;padding:9px 15px;border-radius:var(--radius-sm);
+  border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;display:inline-flex;
+  align-items:center;gap:6px;transition:.12s}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+.btn.primary:active{background:var(--teal-dark)}
+.btn.red{background:var(--red);border-color:var(--red);color:#fff}
+.btn.sm{padding:6px 11px;font-size:13px}
+.btn.ghost{background:transparent}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.stat{background:#fff;border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 8px;text-align:center}
+.stat b{display:block;font-size:22px;font-weight:800;color:var(--teal);line-height:1}
+.stat span{font-size:10.5px;color:var(--muted);margin-top:4px;display:block}
+
+/* Search */
+.search{display:flex;gap:8px;margin-bottom:12px}
+.search input{flex:1;padding:11px 13px;border:1px solid var(--line);border-radius:var(--radius-sm);
+  font-size:15px;font-family:var(--font);background:#fff;color:var(--ink)}
+.search input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,152,184,.12)}
+
+/* Rider rows (check-in) */
+.list{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.cat-divider{padding:6px 14px;background:#F7FAFB;font-size:11px;font-weight:700;color:var(--muted);
+  letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid var(--line-soft)}
+.row{display:grid;grid-template-columns:30px 1fr auto auto;align-items:center;gap:10px;padding:11px 13px;
+  border-bottom:1px solid var(--line-soft);cursor:pointer;user-select:none}
+.row:last-child{border-bottom:none}
+.row:active{background:#F7FAFB}
+.row.in{background:var(--ok-tint)}
+.chk{width:24px;height:24px;border-radius:50%;border:2px solid #CBD5D8;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.row.in .chk{background:var(--ok);border-color:var(--ok)}
+.chk svg{width:14px;height:14px;stroke:#fff;stroke-width:3;fill:none;opacity:0}
+.row.in .chk svg{opacity:1}
+.rname{font-size:14.5px;font-weight:600}
+.rmeta{font-size:11.5px;color:var(--muted);margin-top:1px}
+.plate{font-size:12.5px;font-weight:700;padding:3px 8px;border-radius:6px;background:var(--ink);color:#fff;font-variant-numeric:tabular-nums}
+.edit-plate{cursor:pointer;position:relative}
+.edit-plate::after{content:'';position:absolute;right:-3px;top:-3px;width:7px;height:7px;border-radius:50%;background:var(--teal);border:1.5px solid #fff}
+.cls{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px}
+.cls.Novice{background:#A8D88A;color:#1A1A1A}
+.cls.Intermediate{background:#F5C518;color:#1A1A1A}
+.cls.Expert{background:#1FA84A;color:#fff}
+.cls.Junior{background:#ED1C24;color:#fff}
+.cls.U23{background:#1565C0;color:#fff}
+.cls.Elite{background:#1A1A1A;color:#fff}
+
+/* Motos */
+.moto{background:#fff;border:1px solid var(--line);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+.moto.flag{border-color:#F0C75A;box-shadow:0 0 0 1px #F0C75A}
+.moto-h{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#F7FAFB;border-bottom:1px solid var(--line-soft)}
+.mnum{width:26px;height:26px;border-radius:7px;background:var(--red);color:#fff;font-weight:800;font-size:13px;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.moto-h .t{font-size:14px;font-weight:700}
+.moto-h .s{font-size:11px;color:var(--muted);margin-top:1px}
+.moto-h .right{margin-left:auto;display:flex;align-items:center;gap:6px}
+.mrow{display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--line-soft)}
+.mrow:last-child{border-bottom:none}
+.mrow.sel{background:var(--teal-tint);box-shadow:inset 3px 0 0 var(--teal)}
+.mrow .mplate{font-size:12.5px;font-weight:700;min-width:46px;text-align:center;background:#F0F2F3;
+  border-radius:5px;padding:3px 4px;font-variant-numeric:tabular-nums}
+.mrow .mname{font-size:13.5px;font-weight:600;flex:1}
+.mrow .tag{font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--int-bg);color:var(--int)}
+.mrow .age{font-size:11px;color:var(--muted-soft)}
+.mrow .mv{font-size:11px;color:var(--teal);font-weight:700;border:1px solid var(--teal);
+  border-radius:6px;padding:3px 8px;background:#fff}
+.banner{font-size:12px;padding:7px 12px;display:flex;align-items:center;gap:6px}
+.banner.warn{background:var(--warn-tint);color:var(--warn)}
+.banner.bad{background:var(--bad-tint);color:var(--bad)}
+.banner svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0}
+.move-bar{padding:9px 12px;background:var(--teal-tint);border-top:1px solid #BfE6EF;
+  display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.move-bar .lbl{font-size:12px;font-weight:700;color:var(--teal);width:100%;margin-bottom:2px}
+.move-chip{font-size:12px;font-weight:600;padding:6px 11px;border-radius:6px;border:1px solid var(--teal);
+  background:#fff;color:var(--teal);cursor:pointer}
+.move-chip:active{background:var(--teal);color:#fff}
+
+/* Scoring */
+.pos{width:30px;height:30px;border-radius:50%;border:2px solid #CBD5D8;display:flex;align-items:center;
+  justify-content:center;font-size:13px;font-weight:800;flex-shrink:0;font-variant-numeric:tabular-nums}
+.pos.p1{background:var(--int-bg);color:var(--int);border-color:#EF9F27}
+.pos.p2{background:#F0F1F2;color:#444;border-color:#B4B2A9}
+.pos.p3{background:var(--exp-bg);color:var(--exp);border-color:#E8836A}
+.pos.set{background:var(--teal-tint);color:var(--teal);border-color:var(--teal)}
+.pts{margin-left:auto;font-size:13px;font-weight:700;min-width:42px;text-align:right;font-variant-numeric:tabular-nums}
+
+/* Round selector + 3-round scoring */
+.rounds{display:flex;gap:6px;background:#fff;border:1px solid var(--line);border-radius:var(--radius-sm);padding:5px;margin-bottom:14px;position:sticky;top:118px;z-index:20}
+.rbtn{flex:1;padding:9px 6px;border:none;background:none;font-family:var(--font);font-size:13px;font-weight:700;
+  color:var(--muted);border-radius:6px;cursor:pointer}
+.rbtn.on{background:var(--teal);color:#fff}
+.scorerow{display:grid;grid-template-columns:34px 46px 1fr auto;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid var(--line-soft);cursor:pointer}
+.scorerow:last-of-type{border-bottom:none}
+.scorerow:active{background:#F7FAFB}
+.rounddots{display:flex;gap:4px;margin-top:3px}
+.rd{font-size:10px;font-weight:700;width:18px;height:18px;border-radius:4px;display:flex;align-items:center;
+  justify-content:center;background:#F0F2F3;color:var(--muted-soft);font-variant-numeric:tabular-nums}
+.rd.has{background:var(--teal-tint);color:var(--teal)}
+.rd.dns{background:var(--bad-tint);color:var(--bad)}
+.result{margin-left:auto;text-align:right;min-width:58px}
+.result .pl{font-size:13px;font-weight:800}
+.result .pl.win{color:var(--int)}
+.result .cp{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.result .tot{font-size:11px;color:var(--muted-soft)}
+
+/* Points / standings */
+.standcat{background:#fff;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin-bottom:14px}
+.standcat>h3{background:var(--teal);color:#fff;font-size:12px;font-weight:700;padding:8px 12px;
+  letter-spacing:.04em;text-transform:uppercase}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:7px 10px;font-size:10.5px;font-weight:700;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--line-soft);background:#FAFBFC}
+td{padding:8px 10px;border-bottom:1px solid var(--line-soft);font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:none}
+td.name{font-weight:600;font-variant-numeric:normal}
+td.rk{color:var(--muted);width:32px}
+td.tot{font-weight:800;text-align:right}
+
+/* Admin */
+.card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:14px}
+.card h3{font-size:14px;font-weight:800;margin-bottom:10px}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.03em}
+.field input,.field select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius-sm);
+  font-size:15px;font-family:var(--font);background:#fff;color:var(--ink)}
+.field input:focus,.field select:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(0,152,184,.12)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.admin-rider{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line-soft)}
+.admin-rider:last-child{border-bottom:none}
+
+/* Empty + toast + loader */
+.empty{text-align:center;padding:48px 20px;color:var(--muted)}
+.empty svg{width:40px;height:40px;stroke:var(--muted-soft);fill:none;stroke-width:1.5;margin-bottom:10px;opacity:.6}
+.empty p{font-size:14px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);background:var(--ink);
+  color:#fff;padding:12px 18px;border-radius:10px;font-size:14px;font-weight:600;z-index:100;opacity:0;
+  transition:.25s;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:90%}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+.toast.bad{background:var(--bad)}
+.toast.ok{background:var(--ok)}
+.loader{text-align:center;padding:50px 20px;color:var(--muted)}
+
+/* Class picker overlay */
+.overlay{position:fixed;inset:0;background:rgba(16,24,40,.45);z-index:200;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:#fff;width:100%;max-width:760px;border-radius:16px 16px 0 0;padding:8px 8px calc(14px + env(safe-area-inset-bottom));
+  animation:rise .18s ease}
+@keyframes rise{from{transform:translateY(40px);opacity:.6}to{transform:translateY(0);opacity:1}}
+.sheet-h{font-size:13px;font-weight:700;color:var(--muted);padding:12px 12px 8px}
+.sheet-opt{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font-family:var(--font);
+  font-size:15px;font-weight:600;color:var(--ink);background:none;border:none;padding:12px;border-radius:10px;cursor:pointer}
+.sheet-opt:active{background:#F4F6F7}
+.sheet-opt.cur{background:var(--teal-tint)}
+.sheet-opt.cancel{justify-content:center;color:var(--muted);font-weight:700;margin-top:4px}
+.spin{width:32px;height:32px;border:3px solid var(--line);border-top-color:var(--teal);border-radius:50%;
+  margin:0 auto 14px;animation:sp 0.8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.bottombar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
+  padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;gap:10px;z-index:35;max-width:760px;margin:0 auto}
+.bottombar .btn{flex:1;justify-content:center}
+@media(min-width:760px){.bottombar{left:50%;transform:translateX(-50%);border-radius:14px 14px 0 0;border-left:1px solid var(--line);border-right:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="head">
+    <div class="logo" id="logo"></div>
+    <div class="head-txt">
+      <div class="head-title">Club Race Manager</div>
+    </div>
+    <div class="head-right">
+      <div id="seasonLabel">— Season</div>
+      <div class="conn" id="connBtn" style="cursor:pointer" title="Tap to refresh"><span class="dot" id="dot"></span><span id="connTxt">connecting…</span></div>
+      <button id="modeBtn" class="mode-chip view">View</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab on" data-tab="checkin">
+      <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      <span class="tab-wrap">Check-in<span class="pill" id="pillCI" style="display:none">0</span></span>
+    </button>
+    <button class="tab" data-tab="motos">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="14" width="18" height="5" rx="1"/></svg>
+      <span>Motos</span>
+    </button>
+    <button class="tab" data-tab="scoring">
+      <svg viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+      <span>Scoring</span>
+    </button>
+    <button class="tab" data-tab="points">
+      <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="8"/><rect x="12" y="6" width="3" height="12"/><rect x="17" y="13" width="3" height="5"/></svg>
+      <span>Points</span>
+    </button>
+    <button class="tab" data-tab="admin">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+      <span>Admin</span>
+    </button>
+  </nav>
+
+  <!-- CHECK-IN -->
+  <section class="sec on" id="sec-checkin">
+    <div class="viewnote">View only — tap “View” in the top corner and enter the password to make changes.</div>
+    <div class="stats">
+      <div class="stat"><b id="stReg">0</b><span>Registered</span></div>
+      <div class="stat"><b id="stIn">0</b><span>Checked in</span></div>
+      <div class="stat"><b id="stNov">0</b><span>Novice</span></div>
+      <div class="stat"><b id="stAdv">0</b><span>Int / Exp</span></div>
+    </div>
+    <div class="search">
+      <input type="text" id="search" placeholder="Search name or plate…" autocomplete="off">
+      <button class="btn sm" id="clearSearch">Clear</button>
+    </div>
+    <div id="checkinList"><div class="loader"><div class="spin"></div>Loading riders…</div></div>
+  </section>
+
+  <!-- MOTOS -->
+  <section class="sec" id="sec-motos">
+    <div class="viewnote">View only — moto sheets update live during the race.</div>
+    <div class="sec-head">
+      <div><h2>Moto groups</h2><div class="sub" id="motoSub">Check riders in, then build</div></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn sm" id="resetMotos">Reset</button>
+        <button class="btn sm primary" id="buildMotos">Build motos</button>
+      </div>
+    </div>
+    <div id="motosWrap"></div>
+  </section>
+
+  <!-- SCORING -->
+  <section class="sec" id="sec-scoring">
+    <div class="viewnote">View only — results update live as races are scored.</div>
+    <div class="sec-head">
+      <div><h2>Score the day</h2><div class="sub">3 races per moto · lowest total wins</div></div>
+    </div>
+    <div class="rounds" id="roundSel" style="display:none">
+      <button class="rbtn on" data-round="0">Race 1</button>
+      <button class="rbtn" data-round="1">Race 2</button>
+      <button class="rbtn" data-round="2">Race 3</button>
+    </div>
+    <div id="scoringWrap"></div>
+  </section>
+
+  <!-- POINTS -->
+  <section class="sec" id="sec-points">
+    <div class="sec-head">
+      <div><h2>Club points</h2><div class="sub" id="pointsSub">Season standings by age group</div></div>
+      <button class="btn sm" id="refreshPoints">Refresh</button>
+    </div>
+    <div id="pointsWrap"></div>
+  </section>
+
+  <!-- ADMIN -->
+  <section class="sec" id="sec-admin">
+    <div id="adminGate" class="card" style="text-align:center">
+      <div style="width:46px;height:46px;border-radius:50%;background:var(--teal-tint);display:flex;align-items:center;justify-content:center;margin:6px auto 12px">
+        <svg viewBox="0 0 24 24" style="width:24px;height:24px;stroke:var(--teal);fill:none;stroke-width:2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <h3 style="margin-bottom:4px">Staff access</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Enter the password to run check-in, motos, scoring and admin on this device. Everyone else stays in view-only mode.</p>
+      <div class="field"><input id="adminPass" type="password" placeholder="Password" autocomplete="off" style="text-align:center"></div>
+      <button class="btn primary" id="adminUnlock" style="width:100%;justify-content:center">Unlock this device</button>
+    </div>
+
+    <div id="adminBody" style="display:none">
+    <div class="card">
+      <h3>Add a rider</h3>
+      <div class="grid2">
+        <div class="field"><label>First name</label><input id="aFirst" type="text"></div>
+        <div class="field"><label>Last name</label><input id="aLast" type="text"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Birth year</label><input id="aBirth" type="number" inputmode="numeric" placeholder="e.g. 2015"></div>
+        <div class="field"><label>Sex</label><select id="aSex"><option>Male</option><option>Female</option></select></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label>Class</label><select id="aClass"><option>Novice</option><option>Intermediate</option><option>Expert</option><option>Junior</option><option>U23</option><option>Elite</option></select></div>
+        <div class="field"><label>Plate</label><input id="aPlate" type="text" placeholder="e.g. 083 or SK4"></div>
+      </div>
+      <button class="btn primary" id="addRiderBtn" style="width:100%;justify-content:center">Add rider</button>
+    </div>
+
+    <div class="card">
+      <h3>Season</h3>
+      <div class="field"><label>Active season</label><select id="seasonSelect"></select></div>
+      <div class="sub" style="font-size:12px;color:var(--muted)">New season each year: make a copy of the Sheet, then add it here by File ID. See the SOP.</div>
+    </div>
+
+    <div class="card">
+      <h3 id="rosterTitle">Roster</h3>
+      <div id="rosterList"></div>
+    </div>
+    </div>
+  </section>
+
+</div>
+
+<div class="bottombar" id="bottombar" style="display:none">
+  <button class="btn" id="bbReset">Clear scores</button>
+  <button class="btn primary" id="bbSave">Finish &amp; save race day</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   CONFIG — the only line you'd ever change is this URL,
+   and only if you re-deploy the backend to a brand-new URL.
+   ============================================================ */
+const API = 'https://script.google.com/macros/s/AKfycbw-4vrobbYcy22X32n58hUoxKRQUK7eYuGtFoLRDnKlKyjJELTR_Ukg6qi-HKGrCCGQQA/exec';
+
+const RUN_PASSWORD = 'TwentyInch';
+let runMode = false;            // false = View (read-only), true = Run (interactive)
+
+/* ---- Category ordering (mirrors the SCA Challenge brackets) ---- */
+const MALE_CATS = [];
+for (let a=5;a<=16;a++) MALE_CATS.push(a+' Male');
+MALE_CATS.push('17-24 Male','25-29 Male','30-34 Male','35+ Male');
+const FEMALE_CATS = [];
+for (let a=5;a<=16;a++) FEMALE_CATS.push(a+' Female');
+FEMALE_CATS.push('17-24 Female','25+ Female');
+const ALL_CATS = [];
+for (let a=5;a<=16;a++){ ALL_CATS.push(a+' Male'); ALL_CATS.push(a+' Female'); }
+ALL_CATS.push('17-24 Male','17-24 Female','25-29 Male','25+ Female','30-34 Male','35+ Male');
+
+function nextCat(cat, sex){
+  const list = (String(sex).toLowerCase()[0]==='f') ? FEMALE_CATS : MALE_CATS;
+  const i = list.indexOf(cat);
+  return (i>=0 && i<list.length-1) ? list[i+1] : cat;
+}
+
+/* ---- State ---- */
+let RIDERS = [], SETTINGS = {points:{1:50,2:40,3:35,4:30,5:25,6:20,7:15,8:10},minMoto:2,maxMoto:8}, RACENIGHTS = [], HISTORY = {}, SEASONS=[];
+let MOTOS = [];
+let MOVE = null; // {motoIdx, riderIdx} when moving a rider
+
+/* ============================================================
+   API helpers
+   ============================================================ */
+async function apiGet(action, params={}){
+  const u = new URL(API);
+  u.searchParams.set('action', action);
+  Object.keys(params).forEach(k=>u.searchParams.set(k, params[k]));
+  const r = await fetch(u.toString(), {method:'GET'});
+  const j = await r.json();
+  if(!j.ok) throw new Error(j.error||'Request failed');
+  return j.data;
+}
+async function apiPost(action, payload={}){
+  const r = await fetch(API, {
+    method:'POST',
+    body: JSON.stringify(Object.assign({action}, payload)),
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    redirect:'follow'
+  });
+  const j = await r.json();
+  if(!j.ok) throw new Error(j.error||'Request failed');
+  return j.data;
+}
+function setConn(state){
+  const dot=document.getElementById('dot'), txt=document.getElementById('connTxt');
+  dot.className='dot'+(state==='live'?' live':state==='err'?' err':'');
+  txt.textContent = state==='live'?'connected':state==='err'?'offline':'connecting…';
+}
+
+/* ============================================================
+   Auto-refresh — keeps the read-only view current for parents.
+   Only runs in View mode, so it never disturbs an official's
+   in-progress check-in / motos / scoring on a Run-mode device.
+   ============================================================ */
+let refreshTimer=null;
+function startAutoRefresh(){
+  if(refreshTimer) clearInterval(refreshTimer);
+  refreshTimer=setInterval(()=>{ if(!runMode) refreshData(false); }, 30000);
+}
+async function refreshData(manual){
+  try{
+    const d=await apiGet('bootstrap');
+    // preserve check-in flags by riderId (harmless in view mode, safe in run mode)
+    const wasIn={}; RIDERS.forEach(r=>{ if(r.checkedIn) wasIn[r.riderId]=true; });
+    RIDERS=(d.riders||[]).map(r=>Object.assign({},r,{checkedIn:!!wasIn[r.riderId]}));
+    SETTINGS=d.settings||SETTINGS; RACENIGHTS=d.raceNights||[]; HISTORY=d.recentHistory||{};
+    setConn('live');
+    renderCheckin(); renderStats(); renderRoster();
+    const onPoints=document.querySelector('.tab[data-tab="points"]').classList.contains('on');
+    if(onPoints) loadStandings();
+    if(manual) toast('Updated','ok');
+  }catch(e){ setConn('err'); if(manual) toast('Could not refresh','bad'); }
+}
+
+/* ============================================================
+   Boot
+   ============================================================ */
+async function boot(){
+  drawLogo();
+  try{
+    const d = await apiGet('bootstrap');
+    RIDERS = (d.riders||[]).map(r=>Object.assign({}, r, {checkedIn:false}));
+    SETTINGS = d.settings||SETTINGS;
+    RACENIGHTS = d.raceNights||[];
+    HISTORY = d.recentHistory||{};
+    if(d.season){ document.getElementById('seasonLabel').textContent = d.season.year+' Season'; }
+    setConn('live');
+    renderCheckin(); renderStats(); renderRoster();
+    await loadSeasons();
+    applyMode();          // default = view-only
+    startAutoRefresh();
+  }catch(e){
+    setConn('err');
+    document.getElementById('checkinList').innerHTML =
+      '<div class="empty"><svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>'+
+      '<p>Could not reach the backend.<br><span style="font-size:12px">'+esc(e.message)+'</span></p></div>';
+    toast('Connection failed — check the backend URL', 'bad');
+  }
+}
+function drawLogo(){
+  document.getElementById('logo').innerHTML =
+    '<img src="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiPz4NCjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+DQo8IS0tIENyZWF0b3I6IENvcmVsRFJBVyAyMDIxICg2NC1CaXQpIC0tPg0KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbDpzcGFjZT0icHJlc2VydmUiIHdpZHRoPSI3LjAwNDcyaW4iIGhlaWdodD0iNC4wNzkyNGluIiB2ZXJzaW9uPSIxLjEiIHN0eWxlPSJzaGFwZS1yZW5kZXJpbmc6Z2VvbWV0cmljUHJlY2lzaW9uOyB0ZXh0LXJlbmRlcmluZzpnZW9tZXRyaWNQcmVjaXNpb247IGltYWdlLXJlbmRlcmluZzpvcHRpbWl6ZVF1YWxpdHk7IGZpbGwtcnVsZTpldmVub2RkOyBjbGlwLXJ1bGU6ZXZlbm9kZCINCnZpZXdCb3g9IjAgMCA3MDUyLjIyIDQxMDYuOSINCiB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayINCiB4bWxuczp4b2RtPSJodHRwOi8vd3d3LmNvcmVsLmNvbS9jb3JlbGRyYXcvb2RtLzIwMDMiPg0KIDxkZWZzPg0KICA8c3R5bGUgdHlwZT0idGV4dC9jc3MiPg0KICAgPCFbQ0RBVEFbDQogICAgLnN0cjAge3N0cm9rZTojRkYxNjE2O3N0cm9rZS13aWR0aDozLjAyO3N0cm9rZS1taXRlcmxpbWl0OjIuNjEzMTN9DQogICAgLmZpbDIge2ZpbGw6YmxhY2t9DQogICAgLmZpbDQge2ZpbGw6I0ZGMTYxNn0NCiAgICAuZmlsMSB7ZmlsbDojMzkzNTM2O2ZpbGwtcnVsZTpub256ZXJvfQ0KICAgIC5maWwzIHtmaWxsOndoaXRlO2ZpbGwtcnVsZTpub256ZXJvfQ0KICAgIC5maWwwIHtmaWxsOndoaXRlO2ZpbGwtcnVsZTpub256ZXJvfQ0KICAgXV0+DQogIDwvc3R5bGU+DQogPC9kZWZzPg0KIDxnIGlkPSJMYXllcl94MDAyMF8xIj4NCiAgPG1ldGFkYXRhIGlkPSJDb3JlbENvcnBJRF8wQ29yZWwtTGF5ZXIiLz4NCiAgPGcgaWQ9IlJlZ2luYV94MDAyY19feDAwMjBfU0suIj4NCiAgIDxwYXRoIGNsYXNzPSJmaWwwIiBkPSJNMjAwMyAyNjI5LjkxYzAsMTYuNjEgLTQuMiwzMC45NiAtMTIuNTgsNDMuMDQgLTguMzksMTIuMDggLTIwLjE0LDIwLjg5IC0zNS4yNCwyNi40M2wyNi42OCA1Ny44OSAtMzguMjYgMCAtMTkuODkgLTUyLjFjLTEuMzQsMC4xNyAtMy40NCwwLjI1IC02LjI5LDAuMjVsLTQwLjAyIDAgLTEwLjMyIDUxLjg1IC0zMy43MyAwIDM1LjI0IC0xNzYuMTkgNzMuNDkgMGMxOS42MywwIDM0LjY5LDQuMjQgNDUuMTgsMTIuNzEgMTAuNDksOC40NyAxNS43MywyMC41MSAxNS43MywzNi4xMnptLTgwLjA0IDQ1LjgxYzE0LjkzLDAgMjYuNTEsLTMuNDQgMzQuNzMsLTEwLjMyIDguMjIsLTYuODggMTIuMzMsLTE2LjcgMTIuMzMsLTI5LjQ1IDAsLTguMzkgLTIuODksLTE0LjczIC04LjY4LC0xOSAtNS43OSwtNC4yOCAtMTQuMTMsLTYuNDIgLTI1LjA0LC02LjQybC00MC4wMiAwIC0xMy4wOSA2NS4xOSAzOS43NyAweiIvPg0KICAgPHBvbHlnb24gY2xhc3M9ImZpbDAiIHBvaW50cz0iMjI3My40NiwyNjEwLjUyIDIxNzcuODEsMjYxMC41MiAyMTY5LDI2NTQuMDcgMjI1NC44MywyNjU0LjA3IDIyNDkuMDQsMjY4My41MSAyMTYzLjIyLDI2ODMuNTEgMjE1NC40LDI3MjcuODEgMjI1Mi41NiwyNzI3LjgxIDIyNDcuMDMsMjc1Ny4yNiAyMTE0Ljg5LDI3NTcuMjYgMjE1MC4xMywyNTgxLjA4IDIyNzguOTksMjU4MS4wOCAiLz4NCiAgIDxwYXRoIGNsYXNzPSJmaWwwIiBkPSJNMjUyMi4yNyAyNjY5LjY3bDI5LjIgMCAtMTMuMDkgNjYuOTVjLTEwLjI0LDcuMDUgLTIxLjMxLDEyLjY3IC0zMy4yMiwxNi44NiAtMTEuOTEsNC4yIC0yMy43NSw2LjI5IC0zNS40OSw2LjI5IC0xNi4xMSwwIC0zMC42MiwtMy42NSAtNDMuNTQsLTEwLjk1IC0xMi45MiwtNy4zIC0yMi45OSwtMTcuMjQgLTMwLjIsLTI5LjgzIC03LjIyLC0xMi41OCAtMTAuODIsLTI2LjY4IC0xMC44MiwtNDIuMjggMCwtMTcuOTYgNC43LC0zNC40IDE0LjA5LC00OS4zMyA5LjQsLTE0Ljk0IDIyLjExLC0yNi43NiAzOC4xMywtMzUuNDkgMTYuMDMsLTguNzIgMzMuNTIsLTEzLjA5IDUyLjQ4LC0xMy4wOSAxMi41OCwwIDI0Ljc5LDIuMjcgMzYuNjIsNi44IDExLjgzLDQuNTMgMjEuNzcsMTAuNzQgMjkuODMsMTguNjNsLTIxLjY1IDI0LjkyYy02LjA0LC02LjIxIC0xMy4yNSwtMTEuMTEgLTIxLjY1LC0xNC43MiAtOC4zOSwtMy42MSAtMTcuMDMsLTUuNDEgLTI1LjkyLC01LjQxIC0xMi4wOCwwIC0yMy4yOCwyLjk0IC0zMy42LDguODEgLTEwLjMyLDUuODcgLTE4LjU0LDEzLjggLTI0LjY3LDIzLjc5IC02LjEyLDkuOTggLTkuMTgsMjAuOTMgLTkuMTgsMzIuODQgMCwxMC4yNCAyLjM5LDE5LjU1IDcuMTcsMjcuOTQgNC43OCw4LjM5IDExLjM3LDE0Ljk3IDE5Ljc2LDE5Ljc2IDguMzksNC43OCAxNy44Nyw3LjE3IDI4LjQ0LDcuMTcgNS44NywwIDEyLjA4LC0wLjk2IDE4LjYzLC0yLjg5IDYuNTQsLTEuOTMgMTIuOTIsLTQuNTcgMTkuMTMsLTcuOTNsOS41NiAtNDguODN6Ii8+DQogICA8cG9seWdvbiBjbGFzcz0iZmlsMCIgcG9pbnRzPSIyNzQwLjM3LDI1ODEuMDggMjcwNS4xMywyNzU3LjI2IDI2NzEuNDEsMjc1Ny4yNiAyNzA2LjY0LDI1ODEuMDggIi8+DQogICA8cG9seWdvbiBjbGFzcz0iZmlsMCIgcG9pbnRzPSIzMDA2LjA0LDI1ODEuMDggMzAzOC41MSwyNTgxLjA4IDMwMDMuMjcsMjc1Ny4yNiAyOTcxLjMxLDI3NTcuMjYgMjkwNS4zNiwyNjM1Ljk1IDI4ODAuOTUsMjc1Ny4yNiAyODQ3Ljk4LDI3NTcuMjYgMjg4My4yMSwyNTgxLjA4IDI5MTUuMTgsMjU4MS4wOCAyOTgxLjM3LDI3MDIuOSAiLz4NCiAgIDxwYXRoIGNsYXNzPSJmaWwwIiBkPSJNMzI3Ni40OSAyNzU3LjI2bC05LjMxIC0zNy4yNSAtODYuMzMgMCAtMjEuNjUgMzcuMjUgLTM0LjczIDAgMTA2LjIyIC0xNzYuMTkgMzQuNzMgMCA0Ny4zMiAxNzYuMTkgLTM2LjI0IDB6bS03OC43OCAtNjYuMmw2Mi40MiAwIC0xOC42MyAtNzUuMDEgLTQzLjc5IDc1LjAxeiIvPg0KICAgPHBhdGggY2xhc3M9ImZpbDAiIGQ9Ik0zNDQ0LjYxIDI3MTUuMDdjNS40NCwwIDEwLDEuNzIgMTMuNjUsNS4xOCAzLjY2LDMuNDYgNS40OSw4LjIyIDUuNDksMTQuMjkgMCwzLjU2IC0wLjYzLDYuOSAtMS44OCwxMC4wNCAtMS4yNiwzLjE0IC0zLjAzLDYuNDkgLTUuMzQsMTAuMDVsLTIyLjkyIDM3Ljk4IC0yMC43MiAwIDE2LjY0IC0zNy4zNmMtNS4yMywtMy41NiAtNy44NSwtOC44OSAtNy44NSwtMTYuMDEgMCwtNi45MSAyLjIsLTEyLjY2IDYuNTksLTE3LjI3IDQuNCwtNC42MSA5Ljg0LC02LjkgMTYuMzIsLTYuOXoiLz4NCiAgIDxwYXRoIGNsYXNzPSJmaWwwIiBkPSJNMzg0NC42MyAyNTc5LjQ2YzExLjU4LDAgMjIuNzQsMS42OCAzMy40OCw1LjAzIDEwLjc0LDMuMzYgMjAuMjIsNy45NyAyOC40NCwxMy44NWwtMTYuMzYgMjkuMmMtOC4zOSwtNS41NCAtMTcuMiwtOS43NyAtMjYuNDMsLTEyLjcxIC05LjIzLC0yLjk0IC0xNy40NSwtNC40IC0yNC42NywtNC40IC04LjM5LDAgLTE1LjE1LDEuNjQgLTIwLjI2LDQuOTEgLTUuMTIsMy4yNyAtNy42Nyw3Ljg0IC03LjY3LDEzLjcyIDAsNC41MyAxLjUxLDguMyA0LjUzLDExLjMyIDMuMDIsMy4wMiA2Ljc1LDUuNDUgMTEuMiw3LjMgNC40NSwxLjg1IDEwLjcsNC4wMyAxOC43NSw2LjU0IDEwLjc0LDMuMzYgMTkuNDcsNi42MyAyNi4xOCw5LjgxIDYuNzEsMy4xOSAxMi40Niw3Ljc2IDE3LjI0LDEzLjcyIDQuNzgsNS45NiA3LjE3LDEzLjcyIDcuMTcsMjMuMjggMCwxMi4yNSAtMy4xOSwyMi44NiAtOS41NiwzMS44NCAtNi4zOCw4Ljk4IC0xNS4xLDE1Ljg1IC0yNi4xOCwyMC42NCAtMTEuMDcsNC43OCAtMjMuNDksNy4xNyAtMzcuMjUsNy4xNyAtMTMuNTksMCAtMjYuNjgsLTIuNTYgLTM5LjI2LC03LjY4IC0xMi41OCwtNS4xMiAtMjMuMzMsLTEyLjA0IC0zMi4yMiwtMjAuNzdsMTYuODcgLTI4LjY5YzguMDUsOC4yMiAxNy4zNywxNC42OCAyNy45NCwxOS4zOCAxMC41Nyw0LjcgMjAuNjQsNy4wNSAzMC4yLDcuMDUgMTAuMDcsMCAxNy45NSwtMS45NyAyMy42NiwtNS45MSA1LjcsLTMuOTQgOC41NiwtOS40NCA4LjU2LC0xNi40OSAwLC00LjUzIC0xLjUxLC04LjI2IC00LjUzLC0xMS4yIC0zLjAyLC0yLjk0IC02Ljg0LC01LjM3IC0xMS40NiwtNy4zIC00LjYxLC0xLjkzIC0xMC44NiwtNC4wNyAtMTguNzUsLTYuNDIgLTEwLjc0LC0zLjE5IC0xOS41MSwtNi4zMyAtMjYuMywtOS40NCAtNi44LC0zLjEgLTEyLjU4LC03LjU5IC0xNy4zNywtMTMuNDYgLTQuNzgsLTUuODcgLTcuMTcsLTEzLjU5IC03LjE3LC0yMy4xNiAwLC0xMS4yNCAzLjAyLC0yMS4yMyA5LjA2LC0yOS45NSA2LjA0LC04LjcyIDE0LjQ3LC0xNS40MyAyNS4yOSwtMjAuMTQgMTAuODIsLTQuNyAyMy4xMiwtNy4wNSAzNi44NywtNy4wNXoiLz4NCiAgIDxwb2x5Z29uIGNsYXNzPSJmaWwwIiBwb2ludHM9IjQyMDIuODgsMjU4NC41IDQxMjAuMDcsMjY2MC43NiA0MTcwLjY2LDI3NjAuNjkgNDEzMS4xNSwyNzYwLjY5IDQwOTIuMTQsMjY4Ni42OSA0MDU1LjM5LDI3MjAuNjcgNDA0Ny4zMywyNzYwLjY5IDQwMTMuNjEsMjc2MC42OSA0MDQ4Ljg0LDI1ODQuNSA0MDgyLjU3LDI1ODQuNSA0MDY1LjIsMjY3MC44MyA0MTYwLjg1LDI1ODQuNSAiLz4NCiAgIDxwYXRoIGNsYXNzPSJmaWwwIiBkPSJNNDMwNS40OCAyNzE1Ljg5YzUuMjgsMCA5LjUzLDEuNjUgMTIuNzQsNC45NSAzLjIxLDMuMyA0LjgyLDcuNjkgNC44MiwxMy4xNiAwLDYuNDEgLTIuMDMsMTEuNzkgLTYuMDksMTYuMTMgLTQuMDYsNC4zNCAtOS4xLDYuNTEgLTE1LjE1LDYuNTEgLTUuMjgsMCAtOS41MywtMS43NSAtMTIuNzQsLTUuMjQgLTMuMjEsLTMuNDkgLTQuODEsLTcuOTcgLTQuODEsLTEzLjQ1IDAsLTYuNDEgMi4wMywtMTEuNyA2LjA4LC0xNS44NSA0LjA2LC00LjE1IDkuMSwtNi4yMyAxNS4xNSwtNi4yM3oiLz4NCiAgPC9nPg0KICA8ZyBpZD0iXzEzdGhfeDAwMjBfQVZFIj4NCiAgIDxwYXRoIGNsYXNzPSJmaWwwIiBkPSJNMzY2OS45OSAxNTIzLjg1bC05NC42NCA3NjEuNTEgLTE2Mi40OCAwIDE1LjAyIC0xMTQuNjkgLTg1LjE2IDAgLTM3LjM3IDExNC42OSAtMTYzLjQ2IDAgMjY0Ljc5IC03NjEuNTEgMjYzLjMgMHptLTE1OS4yMSAxNDMuMDdsLTE1LjM0IDAgLTEwOC4yNCAzNjUuMSA2MC4zNiAwIDYzLjIyIC0zNjUuMXoiLz4NCiAgIDxwb2x5Z29uIGNsYXNzPSJmaWwwIiBwb2ludHM9IjM5NTQuNSwyMjg1LjM2IDM3MjUuMTMsMjI4NS4zNiAzODAwLjE5LDE1MjMuODUgMzk2OS44NiwxNTIzLjg1IDM4OTguNjQsMjAyOC41OSA0MDY3LjQxLDE1MjMuODUgNDIzNy4wNywxNTIzLjg1ICIvPg0KICAgPHBvbHlnb24gY2xhc3M9ImZpbDAiIHBvaW50cz0iNDEzNy45MywyMjg1LjM2IDQzMTYuNzUsMTUyMy44NSA0NjUzLjE0LDE1MjMuODUgNDYxOC40NywxNjcxLjQ5IDQ0NTMuMjEsMTY3MS40OSA0NDE4LjI4LDE4MjAuMjYgNDU3Ni44NCwxODIwLjI2IDQ1NDMuMjksMTk2My4xNyA0Mzg0LjcyLDE5NjMuMTcgNDM0My45NiwyMTM2Ljc1IDQ1MjAuMzEsMjEzNi43NSA0NDg1LjQxLDIyODUuMzYgIi8+DQogICA8cGF0aCBjbGFzcz0iZmlsMCIgZD0iTTE0NzAuNTIgMTUyNC4wNGwxMzUuMjQgMCAtMTc1LjgxIDc2MS41MSAtMTc4LjMxIDAgMTI4LjAyIC01NTQuNWMtNC4yMSwxLjk2IC05Ljk1LDQuMjQgLTE3LjE1LDcuMTggLTcuMTcsMi43NyAtMjAuNDcsNi42OSAtMzkuOTksMTEuNDIgLTE5LjM3LDQuNzMgLTM3LjA2LDcuMTggLTUyLjg4LDcuMThsMzAuMTMgLTEzMC41MWM4LjgxLDAgMjEuNjEsLTIuNDUgMzguMzYsLTcuMTggMTYuNzUsLTQuNzMgMzQuNCwtMTEuMjYgNTMuMywtMTkuNTggMTguNzIsLTguMzIgMzUuNzIsLTE5LjA5IDUxLjA1LC0zMi40NiAxNS4xNiwtMTMuMzggMjQuNTEsLTI3LjczIDI4LjA1LC00My4wN3oiLz4NCiAgIDxwYXRoIGlkPSJfMSIgY2xhc3M9ImZpbDAiIGQ9Ik0xNzI1LjM2IDIyOTQuMzZjLTM1LjI0LDAgLTY1LjMzLC0zLjkxIC05MC4yOCwtMTEuNzQgLTI0Ljc5LC03LjgzIC00My45OCwtMjAuMDYgLTU3LjkyLC0zNi43IC0xMy43NCwtMTYuOCAtMjIuMjIsLTM4LjAxIC0yNS4wNCwtNjMuOTUgLTMuMDIsLTI1Ljc4IC0wLjMxLC01Ni42MSA4LjAxLC05Mi42NmwxNi45OCAtNzMuNTcgMTcyLjQzIDAgLTE3LjEgNzQuMDZjLTEuNjIsNy4wMiAtMi43MiwxMy44NyAtMy4yNCwyMC4zOSAtMC41Myw2LjUyIDAuMjcsMTIuMjQgMi41NywxNy4xMyAyLjEzLDQuOSA2LjEyLDguODEgMTEuODEsMTEuNzUgNS43MiwyLjc3IDE0LjAzLDQuMjQgMjQuOCw0LjI0IDcuOTksMCAxNC45MSwtMC45OCAyMC43OCwtMy4xIDUuODcsLTIuMTIgMTEuMzgsLTYuMiAxNi4yLC0xMi4yNCA0Ljk4LC02LjA0IDkuMzksLTE0LjUyIDEzLjYyLC0yNS43OCA0LjIsLTExLjA5IDguNDQsLTI1Ljk0IDEyLjcsLTQ0LjM3IDMuMzEsLTE0LjM1IDUuMjEsLTI4LjIyIDUuOTcsLTQxLjQ0IDAuNjEsLTEzLjIxIC0wLjYzLC0yNC44IC0zLjc2LC0zNC41OCAtMy4wOSwtOS45NSAtOC42MywtMTcuNzggLTE2LjU2LC0yMy42NiAtNy43OCwtNS44NyAtMTguNjgsLTguODEgLTMyLjM5LC04LjgxIC0zLjQyLDAgLTYuNTIsMCAtOS4zNCwwLjE2IC0yLjgxLDAuMTYgLTUuMTMsMC4zMyAtNywwLjY1bDMzLjg2IC0xNDYuNjZjMjguMjIsMCA1MS42NCwtNi4wNCA3MC4wOSwtMTguMTEgMTguNDksLTEyLjI0IDMwLjk4LC0zMy4xMiAzNy45LC02My4xMyA4LjQ3LC0zNi43MSAtMS4wMSwtNTQuOTggLTI4LjI2LC01NC45OCAtMTEuOTEsMCAtMjEuMjksMS43OSAtMjguMjgsNS4yMiAtNy4wMywzLjU5IC0xMi40NSw3Ljk5IC0xNi40NywxMy4zOCAtNC4wMSw1LjM4IC02LjkxLDExLjU4IC04Ljc4LDE4LjI3IC0xLjg3LDYuNjkgLTMuNTgsMTMuMzggLTUuMTMsMjAuMDdsLTUuNzIgMjQuOCAtMTczLjkgMCA1LjY1IC0yOC43MWM4LjExLC0zNi41NCAxOS45MSwtNjcuODcgMzUuNDgsLTkzLjY0IDE1LjQxLC0yNS43OCAzNC40NywtNDYuODIgNTYuODMsLTYzLjEzIDIyLjMyLC0xNi4xNSA0OC4yNCwtMjguMDYgNzcuMzQsLTM1LjQgMjkuMSwtNy4zNCA2MS4yNSwtMTAuOTMgOTYuNjUsLTEwLjkzIDM0LjEsMCA2My41LDQuMDggODguMzcsMTIuMjQgMjQuODcsOC4xNiA0NC41MiwyMC41NiA1OS4xMSwzNy4yIDE0LjM5LDE2LjggMjMuNTYsMzcuODUgMjcuMTUsNjMuMyAzLjcxLDI1LjYxIDEuNTEsNTUuNjMgLTYuNTEsOTAuMzggLTQuMDcsMTcuNjIgLTguOTMsMzQuNDIgLTE0Ljc0LDUwLjQxIC01Ljg1LDE2LjE1IC0xMy4xNiwzMC44MyAtMjEuOTUsNDQuMjEgLTguOCwxMy4zOCAtMTkuNTQsMjUuMjggLTMyLjA3LDM1LjczIC0xMi42NCwxMC4yNyAtMjcuODcsMTguMjcgLTQ1LjcsMjQuMTQgMTguODcsMTAuMTIgMzIuNDMsMjIuMDIgNDAuNDEsMzUuNTYgOC4xMywxMy41NCAxMi42OSwyOC4zOSAxMy42Niw0NC43IDEsMTYuMTUgLTAuMzgsMzMuNDUgLTQuMjQsNTEuNTUgLTMuODksMTguMjcgLTguMDYsMzcuMDMgLTEyLjU0LDU2LjQ0IC04LjQsMzYuMzggLTE5Ljk3LDY4Ljg1IC0zNC43Niw5Ny41NSAtMTQuNzUsMjguNTUgLTMzLjQxLDUyLjg2IC01Ni4yNCw3Mi42IC0yMi42NywxOS43NCAtNDkuNjYsMzQuOTEgLTgxLjExLDQ1LjM1IC0zMS40OSwxMC42IC02Ny45MywxNS44MiAtMTA5LjM3LDE1LjgyeiIvPg0KICAgPHBvbHlnb24gaWQ9Il8yIiBjbGFzcz0iZmlsMCIgcG9pbnRzPSIyMTg1Ljk3LDE1MjQuMDQgMjU1NCwxNTI0LjA0IDI1MjAuMTEsMTY3MC44NiAyNDIwLjExLDE2NzAuODYgMjI3OC4xOSwyMjg1LjU1IDIxMTAsMjI4NS41NSAyMjUxLjkxLDE2NzAuODYgMjE1Mi4wNywxNjcwLjg2ICIvPg0KICAgPHBvbHlnb24gaWQ9Il8zIiBjbGFzcz0iZmlsMCIgcG9pbnRzPSIyNjkxLjc5LDE5NDAuMDMgMjYxMi4wMiwyMjg1LjU1IDI0NDQuOCwyMjg1LjU1IDI2MjAuNjEsMTUyNC4wNCAyNzg3LjgzLDE1MjQuMDQgMjcyNS4wNCwxNzk1Ljk5IDI4MDQuNDksMTc5NS45OSAyODY3LjI4LDE1MjQuMDQgMzAzNC40OSwxNTI0LjA0IDI4NTguNjgsMjI4NS41NSAyNjkxLjQ3LDIyODUuNTUgMjc3MS4yNCwxOTQwLjAzICIvPg0KICA8L2c+DQogIDxwYXRoIGlkPSJJbm5lcl94MDAyMF9DdXJ2ZSIgY2xhc3M9ImZpbDEiIGQ9Ik0yNjE5LjA0IDk4Mi40N2wyNzcuNDQgMGMtMjMwLjA5LC0xNzcuODQgLTUxOC41MSwtMjgzLjY4IC04MzEuOCwtMjgzLjY4IC03NTEuNzgsMCAtMTM2MS4yOSw2MDkuNTEgLTEzNjEuMjksMTM2MS4yOSAwLDc1MS44NiA2MDkuNTEsMTM2MS4zNyAxMzYxLjI5LDEzNjEuMzcgMzEzLjI5LDAgNjAxLjcxLC0xMDUuODQgODMxLjgsLTI4My42N2wtNzg3LjM0IDAgMzQ4LjMyIDY4Ljg4Yy0xMjMuMTMsNDIuMjMgLTI1NS4yNSw2NS4wOSAtMzkyLjc4LDY1LjA5IC02NjkuMTgsMCAtMTIxMS42NiwtNTQyLjQ4IC0xMjExLjY2LC0xMjExLjY2IDAsLTY2OS4xIDU0Mi40OCwtMTIxMS41OSAxMjExLjY2LC0xMjExLjU5IDEzNy41MywwIDI2OS42NSwyMi44NiAzOTIuNzgsNjUuMWwtMzQ4LjMyIDY4Ljg4IDUwOS45IDB6Ii8+DQogIDxyZWN0IGNsYXNzPSJmaWwyIiB0cmFuc2Zvcm09Im1hdHJpeCgxLjE3Mjc2IC0wIC0wLjIyMDg0NCAxLjMxMzk4IDQ4MTEuOTUgMTQ2MC40OSkiIHdpZHRoPSIxODI3LjcyIiBoZWlnaHQ9IjEwMzkuNzIiIHJ4PSIxNS40NCIgcnk9IjE1LjQ0Ii8+DQogIDxwb2x5Z29uIGlkPSJMaW5lIiBjbGFzcz0iZmlsMyIgcG9pbnRzPSIxODI4LjIxLDI0ODYuNDggNDQyNS45OCwyNDg2LjQ4IDQ0MjUuOTgsMjUwNy40NSAxODI4LjIxLDI1MDcuNDUgIi8+DQogIDxnIGlkPSJCTVgiPg0KICAgPHBhdGggY2xhc3M9ImZpbDAiIGQ9Ik01MDA5LjY3IDI0NzMuNGwxMzguMTQgLTU5OC4zNCAxNzkuMDYgMGM0Ni45MSwwIDc5LjEyLDEwLjM4IDk2LjkyLDMxLjAyIDE3Ljc5LDIwLjY0IDIwLjk0LDU1Ljg4IDkuNDIsMTA1Ljc1IC0wLjMzLDEuNDEgLTAuODMsMy41OSAtMS40NSw2LjI4IC0yLjA1LDguODUgLTMuNTUsMTUuMzggLTQuNTMsMTkuNjEgLTAuOTgsNC4yMyAtMy4wMiwxMC45IC02LDE5Ljg3IC0yLjk3LDguOTcgLTUuNzgsMTYuMTUgLTguNjMsMjEuMjggLTIuODUsNS4xMyAtNi43NCwxMS40MSAtMTEuNjksMTguOTcgLTUuMDUsNy40MyAtMTAuNDQsMTMuNTggLTE2LjI4LDE4LjMzIC01Ljg0LDQuNzQgLTEyLjk2LDkuNDkgLTIxLjMsMTMuOTcgLTguMjEsNC40OSAtMTcuNDQsNy44MiAtMjcuNDYsMTAuMTMgMTMuMSwzLjIgMjMuNDcsOC44NCAzMS40NywxNi45MiA3LjkxLDcuOTUgMTMuMjYsMTYuNDEgMTYuMjIsMjUuMjUgMy4wNiw4Ljk3IDQuMzksMTkuODcgNC4zMSwzMi45NCAtMC4xNywxMi45NSAtMS4wMSwyMy44NCAtMi41NCwzMi42OCAtMS41LDguNzIgLTMuNjcsMTkuMjIgLTYuNTEsMzEuNTMgLTcuMjgsMzEuNTMgLTE1LjcsNTguNTggLTI1LjI3LDgxLjE0IC05LjU2LDIyLjU2IC0yMS43NCw0Mi41NSAtMzYuNTksNjAuMjQgLTE0Ljg1LDE3LjY5IC0zMi44NiwzMC43NiAtNTMuOTgsMzkuNDggLTIxLjIxLDguNTkgLTQ1LjkzLDEyLjk1IC03NC4yNiwxMi45NWwtMTc5LjA2IDB6bTE5My44MSAtMjc5LjgxbC00MC4wNyAxNzMuNTVjNS45MSwwLjUxIDEwLjIsMC43NyAxMi44OSwwLjc3IDM0LjM1LDAgNTQuOTMsLTE0Ljc0IDYxLjc3LC00NC4zNSAwLDAgNS43NCwtMjQuODcgMTcuMjUsLTc0LjczIDQuMzgsLTE4Ljk3IDQuNCwtMzIuOTQgMC4wNiwtNDEuOTIgLTQuMzcsLTguODQgLTEzLjQ2LC0xMy4zMyAtMjcuNTYsLTEzLjMzbC0yNC4zNSAwem0yMS40OCAtOTMuMDZsMjcuMDQgMGM2LjQxLDAgMTIuMTIsLTEuNDEgMTYuODQsLTQuMSA0Ljc1LC0yLjgyIDguNjIsLTYuNzkgMTEuNTksLTExLjkyIDIuOTgsLTUuMTMgNS4wNywtOS43NCA2LjUzLC0xMy44NSAxLjQ2LC00LjEgMi44NywtOS4xIDQuMiwtMTQuODdsMTMuNyAtNTkuMzVjNC4zOCwtMTguOTcgLTIuNzgsLTI4LjQ2IC0yMS42MywtMjguNDZsLTI3LjY5IDAgLTMwLjYgMTMyLjU0eiIvPg0KICAgPHBvbHlnb24gY2xhc3M9ImZpbDAiIHBvaW50cz0iNTcxMS44OCwyNDczLjQgNTU5My4zMiwyNDczLjQgNTYxOS45OSwyMDQxLjk1IDU1MjAuMzgsMjQ3My40IDUzOTMuNDksMjQ3My40IDU1MzEuNjIsMTg3NS4wNyA1NzMyLjg2LDE4NzUuMDcgNTcxNi40NywyMTg3LjA1IDU4NDMuNzQsMTg3NS4wNyA2MDQ2Ljc3LDE4NzUuMDcgNTkwOC42NCwyNDczLjQgNTc4MC4yLDI0NzMuNCA1ODc5LjgxLDIwNDEuOTUgIi8+DQogICA8cG9seWdvbiBjbGFzcz0iZmlsMCIgcG9pbnRzPSI2MTgwLjY4LDIyMzkuNDggNjA4My45OSwyNDczLjQgNTk0OS45MiwyNDczLjQgNjA5NC4xNiwyMTU1LjY1IDYxMDIuNjYsMTg3NS4wNyA2MjMxLjg3LDE4NzUuMDcgNjIxOC43OSwyMDc5LjM4IDYyOTYuNDcsMTg3NS4wNyA2NDI1LjkzLDE4NzUuMDcgNjMwNC44OCwyMTU1LjY1IDYzMDIuMTUsMjQ3My40IDYxNjguNDYsMjQ3My40ICIvPg0KICA8L2c+DQogIDxwYXRoIGlkPSJPdXRlcl94MDAyMF9DdXJ2ZSIgY2xhc3M9ImZpbDQgc3RyMCIgZD0iTTcwNTIuMTQgOTczLjhjLTEyMDcuMzQsLTYwLjA1IC0yNDE0LjY4LC0xMjAuMDkgLTM2MjIuMDIsLTE4MC4xNCAyOC4xNCwtNzIuODggNTYuMjgsLTE0NS43NSA4NC40MSwtMjE4LjYzIDQxOC40NSwtNTguOTkgODM2Ljg5LC0xMTcuOTggMTI1NS4zNCwtMTc2Ljk3IC01MjYuMjgsLTI3LjM4IC0xMDUyLjU1LC01NC43NSAtMTU3OC44MywtODIuMTMgLTY1LjAxLDQzLjU3IC0xMzAuMDMsODcuMTMgLTE5NS4wNCwxMzAuNyAtODEuNCwtNDYuMDcgLTE2My44MiwtODUuNDcgLTI0Ny4yMiwtMTE4LjUxIC0yLjY2LC0zMS41OSAtNS4zMiwtNjMuMTkgLTcuOTgsLTk0Ljc4IDE0OS41OSwtMC40NCAyOTkuMTgsLTAuODggNDQ4Ljc3LC0xLjMyIC00NDEuNDgsLTEzOS42NiAtNzY2LjQ0LC0yMzEuNDQgLTg2NC4xNiwtMjI5Ljg3IC0zOS41NSw2Ny41MSAtNzkuMSwxMzUuMDMgLTExOC42NiwyMDIuNTQgLTkxLjg2LC02Ljg1IC0xODMuMTksLTcuNCAtMjczLjksLTAuNDIgLTM5LjU3LC02Ny41NSAtNzkuMTQsLTEzNS4xIC0xMTguNzEsLTIwMi42NSAtMTQ3LjU2LDE5Ljk5IC0yODEuOTEsNTEuMSAtNDA0LjMsOTIuMjkgLTYuNDYsNzcuOTIgLTEyLjkzLDE1NS44MyAtMTkuMzksMjMzLjc1IC05Ni42OSwzOS4xNiAtMTc1Ljk1LDc5LjA4IC0yNDYuMTMsMTE5LjM5IC02NS4xMSwtNDMuNDUgLTEzMC4yMSwtODYuOTEgLTE5NS4zMiwtMTMwLjM3IC0xMjcuODUsODQuMzQgLTIzNC40OCwxNzAuNiAtMzIzLjc2LDI1OC40MyAyNy45Miw3Mi45IDU1LjgzLDE0NS43OSA4My43NSwyMTguNjkgLTY1LjMyLDcwLjcgLTEyMS45OCwxNDEuOTggLTE3MC4wMiwyMTMuODMgLTc3LjcxLC0xMC44OCAtMTU1LjQyLC0yMS43NiAtMjMzLjEzLC0zMi42NSAtNzkuMzUsMTI2Ljc4IC0xMzYuNzQsMjUwLjQyIC0xNzkuMjYsMzcxLjkzIDU2LjgxLDUzLjkgMTEzLjYyLDEwNy43OSAxNzAuNDQsMTYxLjY5IC0yNi45NCw4OS41NiAtNDcuMjMsMTc4LjQ3IC02MC43OCwyNjYuNjkgLTc0LjQ5LDIzLjggLTE0OC45OSw0Ny42MSAtMjIzLjQ4LDcxLjQxIC0xNC40MiwxNDMuOTQgLTE1LjYyLDI4Mi41NyAwLjIxLDQxNC40MSA3NC40MSwyMy43OSAxNDguODEsNDcuNTggMjIzLjIyLDcxLjM3IDEyLjI0LDg4Ljk0IDMxLjIzLDE3Ny44NyA2MC43LDI2Ni44MSAtNTYuODYsNTMuOTMgLTExMy43MiwxMDcuODcgLTE3MC41OCwxNjEuODEgNDkuMTksMTMzLjI0IDEwNy44LDI1OC4yOSAxNzkuODUsMzcxLjcgNzcuMzQsLTEwLjg4IDE1NC42OCwtMjEuNzYgMjMyLjAyLC0zMi42NCA1My4zNSw3Ny40NSAxMDkuNTMsMTQ5Ljk3IDE3MC45NSwyMTMuMzEgLTI3LjksNzMuMDQgLTU1Ljc5LDE0Ni4wOSAtODMuNjksMjE5LjEzIDEwMy41NSwxMDMuMjggMjExLjg3LDE4Ny41MiAzMjMuNDksMjU4LjU0IDY1LjI5LC00My4zOCAxMzAuNTksLTg2Ljc2IDE5NS44OCwtMTMwLjE0IDc5LjMyLDQ1LjQzIDE2MC45Myw4NS44MSAyNDYuMDIsMTE4LjU1IDYuNjIsNzguMTEgMTMuMjQsMTU2LjIxIDE5Ljg2LDIzNC4zMiAxMzIuOTEsNDcuNjcgMjY3LjY4LDc1Ljc0IDQwMy42Myw5MS40IDM5LjcsLTY3LjQzIDc5LjM5LC0xMzQuODUgMTE5LjA5LC0yMDIuMjggOTEuNyw3Ljg5IDE4Mi41Niw3LjQyIDI3Mi43MywwLjA3IDM5LjcxLDY3LjQgNzkuNDIsMTM0LjgxIDExOS4xMywyMDIuMjEgMTk0LjU2LC0xNS43NCA1MjguNzgsLTEyMi4yNiA4NjQuMTMsLTIyOS41MSAtMTQ5LjQ2LC0wLjU0IC0yOTguOTMsLTEuMDkgLTQ0OC4zOSwtMS42MyAyLjY1LC0zMS40NiA1LjMsLTYyLjkzIDcuOTUsLTk0LjQgODUuODIsLTMzLjI5IDE2OC4zMywtNzIuMTIgMjQ2LjE5LC0xMTguNjcgNjQuOTEsNDMuMzQgMTI5LjgyLDg2LjY3IDE5NC43MiwxMzAuMDEgNTI2LjYxLC0yNy4xMyAxMDUzLjIxLC01NC4yNiAxNTc5LjgyLC04MS4zOCAtNDE4LjMzLC01OC44NSAtODM2LjY1LC0xMTcuNjkgLTEyNTQuOTgsLTE3Ni41NCAtMjcuODgsLTczLjI4IC01NS43NiwtMTQ2LjU3IC04My42MywtMjE5Ljg1IDczOC4xNCwtNjAuMyAxNDc2LjI4LC0xMjAuNiAyMjE0LjQyLC0xODAuOSAtODQ0LjMsLTAgLTE2ODguNiwtMCAtMjUzMi45LC0wLjAxIC0xNzMuODIsMTk2LjMzIC02MzUuMDEsNDMxLjEgLTExMjcuMTEsNDE1LjE5IC00MTIuODIsLTEzLjM1IC04MzAuNTQsLTI0NC44NSAtMTEyOC40MSwtNjA4LjEzIC0zNzAuMzQsLTQ1MS42NyAtMzg0Ljc4LC0xMTc4LjkxIC00MC45MywtMTcxNS45OCAyNDcuOTksLTM4Ny4zNCA3NDQuMDcsLTY5OC43MSAxMzA2LjU1LC02NjUuMzYgMzE2LjM1LDE4Ljc2IDY0Ny42OSwxMDguNzIgOTg5LjU1LDQxNi45MiAxMzEzLjMxLC0wLjQxIDI2MjYuNjEsLTAuODMgMzkzOS45MiwtMS4yNHoiLz4NCiA8L2c+DQo8L3N2Zz4NCg==" alt="13th Ave BMX">';
+}
+
+/* ============================================================
+   Tabs
+   ============================================================ */
+document.querySelectorAll('.tab').forEach(t=>{
+  t.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+    document.querySelectorAll('.sec').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    const tab=t.dataset.tab;
+    document.getElementById('sec-'+tab).classList.add('on');
+    document.getElementById('bottombar').style.display = (runMode && tab==='scoring' && MOTOS.length) ? 'flex' : 'none';
+    if(tab==='motos') renderMotos();
+    if(tab==='scoring') renderScoring();
+    if(tab==='points') loadStandings();
+    if(tab==='admin') showAdmin();
+    window.scrollTo(0,0);
+  });
+});
+function goTab(tab){ document.querySelector('.tab[data-tab="'+tab+'"]').click(); }
+
+/* ============================================================
+   CHECK-IN
+   ============================================================ */
+const searchEl=document.getElementById('search');
+searchEl.addEventListener('input', renderCheckin);
+document.getElementById('clearSearch').addEventListener('click', ()=>{searchEl.value='';renderCheckin();searchEl.focus();});
+
+function renderCheckin(){
+  const q=searchEl.value.trim().toLowerCase();
+  let list = RIDERS.slice().sort((a,b)=> a.age-b.age || (a.last||'').localeCompare(b.last||''));
+  if(q) list = list.filter(r=> (r.first+' '+r.last).toLowerCase().includes(q) || String(r.plate).toLowerCase().includes(q));
+  const wrap=document.getElementById('checkinList');
+  if(!list.length){ wrap.innerHTML='<div class="empty"><p>No riders match that search.</p></div>'; return; }
+  let html='<div class="list">';
+  let lastCat=null;
+  list.forEach(r=>{
+    if(!q && r.category!==lastCat){ html+='<div class="cat-divider">'+esc(r.category)+'</div>'; lastCat=r.category; }
+    html+= riderRow(r);
+  });
+  html+='</div>';
+  wrap.innerHTML=html;
+  wrap.querySelectorAll('.row').forEach(el=>{
+    el.addEventListener('click', (e)=>{
+      if(e.target.closest('.edit-plate')){ e.stopPropagation(); editPlate(e.target.closest('.edit-plate').dataset.edit); return; }
+      toggleIn(el.dataset.id);
+    });
+  });
+}
+function riderRow(r){
+  return '<div class="row'+(r.checkedIn?' in':'')+'" data-id="'+r.riderId+'">'+
+    '<div class="chk"><svg viewBox="0 0 24 24"><path d="M5 12l5 5L20 6"/></svg></div>'+
+    '<div><div class="rname">'+esc(r.first)+' '+esc(r.last)+'</div>'+
+    '<div class="rmeta">'+esc(r.category)+' · age '+r.age+'</div></div>'+
+    '<span class="cls '+r.cls+'">'+r.cls+'</span>'+
+    '<span class="plate edit-plate" data-edit="'+r.riderId+'" title="Tap to change plate">'+esc(r.plate)+'</span></div>';
+}
+function toggleIn(id){
+  const r=RIDERS.find(x=>x.riderId===id);
+  if(!r) return;
+  r.checkedIn=!r.checkedIn;
+  renderCheckin(); renderStats();
+}
+function renderStats(){
+  const ci=RIDERS.filter(r=>r.checkedIn);
+  document.getElementById('stReg').textContent=RIDERS.length;
+  document.getElementById('stIn').textContent=ci.length;
+  document.getElementById('stNov').textContent=ci.filter(r=>r.cls==='Novice').length;
+  document.getElementById('stAdv').textContent=ci.filter(r=>r.cls!=='Novice').length;
+  const pill=document.getElementById('pillCI');
+  pill.textContent=ci.length; pill.style.display = ci.length? 'flex':'none';
+}
+
+/* ============================================================
+   MOTO BUILDER  — age-first, Experts bump up one age group,
+   solo riders flagged, tap-to-move between motos.
+   ============================================================ */
+document.getElementById('buildMotos').addEventListener('click', buildMotos);
+document.getElementById('resetMotos').addEventListener('click', ()=>{ MOTOS=[]; MOVE=null; renderMotos(); document.getElementById('motoSub').textContent='Check riders in, then build'; });
+
+function buildMotos(){
+  const ci=RIDERS.filter(r=>r.checkedIn);
+  if(ci.length<2){ toast('Check in at least 2 riders first','bad'); return; }
+  // assign effective category (Experts bump up one age group)
+  const groups={};
+  ci.forEach(r=>{
+    let cat=r.category, bumped=false;
+    if(r.cls==='Expert'){ const nc=nextCat(r.category,r.sex); if(nc!==r.category){ cat=nc; bumped=true; } }
+    (groups[cat]=groups[cat]||[]).push(Object.assign({},r,{bumped, raceCat:cat}));
+  });
+  MOTOS=[];
+  const flagged=[];
+  ALL_CATS.forEach(cat=>{
+    const g=groups[cat]; if(!g||!g.length) return;
+    g.sort((a,b)=> a.age-b.age || (a.last||'').localeCompare(b.last||''));
+    if(g.length===1){ flagged.push({cat,rider:g[0]}); return; }
+    for(let i=0;i<g.length;i+=SETTINGS.maxMoto){
+      const chunk=g.slice(i,i+SETTINGS.maxMoto);
+      if(chunk.length===1 && MOTOS.length && MOTOS[MOTOS.length-1].riders.length<SETTINGS.maxMoto){
+        MOTOS[MOTOS.length-1].riders.push(motoRider(chunk[0]));
+      }else{
+        MOTOS.push({cat, riders:chunk.map(motoRider), locked:false});
+      }
+    }
+  });
+  flagged.forEach(({cat,rider})=> MOTOS.push({cat, riders:[motoRider(rider)], locked:false, solo:true}) );
+  MOVE=null;
+  document.getElementById('motoSub').textContent = MOTOS.length+' motos · '+ci.length+' riders';
+  goTab('motos');
+  renderMotos();
+}
+function motoRider(r){ return Object.assign({}, r, {finishes:[null,null,null]}); }
+
+function platesConflict(m){
+  const seen={}, dup=[];
+  m.riders.forEach(r=>{ const p=String(r.plate); if(seen[p]) dup.push(p); seen[p]=true; });
+  return [...new Set(dup)];
+}
+function lastRaced(riderId){
+  const h=HISTORY[riderId];
+  if(h&&h.length){ return h[h.length-1].category; }
+  return null;
+}
+
+function renderMotos(){
+  const wrap=document.getElementById('motosWrap');
+  if(!MOTOS.length){
+    wrap.innerHTML='<div class="empty"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="14" width="18" height="5" rx="1"/></svg><p>No motos yet.<br>Check riders in, then tap “Build motos”.</p></div>';
+    return;
+  }
+  let html='';
+  MOTOS.forEach((m,mi)=>{
+    const conf=platesConflict(m);
+    const solo=m.riders.length<2;
+    html+='<div class="moto'+((solo||m.solo)?' flag':'')+'">';
+    html+='<div class="moto-h"><div class="mnum">'+(mi+1)+'</div>'+
+      '<div><div class="t">Moto '+(mi+1)+'</div>'+
+      '<div class="s">'+m.riders.length+' rider'+(m.riders.length!==1?'s':'')+'</div></div>'+
+      '<div class="right">'+
+      (conf.length?'<svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:'+'var(--bad)'+';fill:none;stroke-width:2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>':'')+
+      '<button class="btn sm ghost" data-lock="'+mi+'">'+(m.locked?'Unlock':'Lock')+'</button>'+
+      '</div></div>';
+    m.riders.forEach((r,ri)=>{
+      const sel = MOVE && MOVE.motoIdx===mi && MOVE.riderIdx===ri;
+      const hint = lastRaced(r.riderId);
+      html+='<div class="mrow'+(sel?' sel':'')+'" data-m="'+mi+'" data-r="'+ri+'">'+
+        '<span class="mplate">'+esc(r.plate)+'</span>'+
+        '<span class="mname">'+esc(r.first)+' '+esc(r.last)+
+          (r.bumped?' <span class="tag">bumped</span>':'')+
+          (hint&&hint!==m.cat?' <span class="tag" style="background:var(--teal-tint);color:var(--teal)">last: '+esc(hint)+'</span>':'')+
+        '</span>'+
+        '<span class="cls '+r.cls+'">'+r.cls+'</span>'+
+        '<span class="age">'+r.age+'y</span>'+
+        '<span class="mv" data-mvfrom="'+mi+'" data-mvr="'+ri+'">Move</span>'+
+        '</div>';
+    });
+    if(solo||m.solo) html+='<div class="banner warn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>Only 1 rider — move someone in, or move this rider to another moto.</div>';
+    if(conf.length) html+='<div class="banner bad"><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>Plate '+conf.join(', ')+' appears twice in this moto — change one before racing.</div>';
+    // move bar
+    if(MOVE && MOVE.motoIdx===mi){
+      html+='<div class="move-bar"><span class="lbl">Move '+esc(MOTOS[mi].riders[MOVE.riderIdx].first)+' to…</span>';
+      MOTOS.forEach((dm,di)=>{
+        if(di===mi || dm.locked || dm.riders.length>=SETTINGS.maxMoto) return;
+        html+='<span class="move-chip" data-dest="'+di+'">Moto '+(di+1)+'</span>';
+      });
+      html+='<span class="move-chip" data-dest="new">+ New moto</span>';
+      html+='<span class="move-chip" data-dest="cancel" style="border-color:var(--muted);color:var(--muted)">Cancel</span>';
+      html+='</div>';
+    }
+    html+='</div>';
+  });
+  wrap.innerHTML=html;
+
+  wrap.querySelectorAll('[data-lock]').forEach(b=> b.addEventListener('click',e=>{e.stopPropagation();const i=+b.dataset.lock;MOTOS[i].locked=!MOTOS[i].locked;renderMotos();}));
+  wrap.querySelectorAll('.mv').forEach(b=> b.addEventListener('click',e=>{
+    e.stopPropagation();
+    MOVE={motoIdx:+b.dataset.mvfrom, riderIdx:+b.dataset.mvr};
+    renderMotos();
+  }));
+  wrap.querySelectorAll('.move-chip').forEach(c=> c.addEventListener('click',()=> doMove(c.dataset.dest)));
+}
+function doMove(dest){
+  if(!MOVE){ return; }
+  if(dest==='cancel'){ MOVE=null; renderMotos(); return; }
+  const from=MOTOS[MOVE.motoIdx];
+  const [rider]=from.riders.splice(MOVE.riderIdx,1);
+  if(dest==='new'){ MOTOS.push({cat:rider.raceCat||rider.category, riders:[rider], locked:false}); }
+  else { MOTOS[+dest].riders.push(rider); }
+  MOTOS=MOTOS.filter(m=>m.riders.length>0);
+  MOVE=null;
+  renderMotos();
+}
+
+/* ============================================================
+   SCORING
+   ============================================================ */
+/* ============================================================
+   SCORING  — 3 races per moto, golf-style (lowest total wins),
+   then club points by final placing.
+   ============================================================ */
+let CUR_ROUND = 0;
+
+document.querySelectorAll('#roundSel .rbtn').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    CUR_ROUND = +b.dataset.round;
+    document.querySelectorAll('#roundSel .rbtn').forEach(x=>x.classList.toggle('on', x===b));
+    renderScoring();
+  });
+});
+
+// DNS scores as worst-in-moto+1 for the golf total
+function roundScore(finish, motoSize){
+  if(finish===null) return null;
+  if(finish==='DNS') return motoSize+1;
+  return finish;
+}
+function motoComplete(m){
+  return m.riders.every(r=> r.finishes.every(f=> f!==null));
+}
+// returns map riderId -> {total, place} once the moto is fully scored
+function motoPlacings(m){
+  if(!motoComplete(m)) return null;
+  const size=m.riders.length;
+  const arr=m.riders.map(r=>({
+    id:r.riderId,
+    total:r.finishes.reduce((s,f)=> s+roundScore(f,size),0),
+    f:r.finishes.map(f=> roundScore(f,size))
+  }));
+  // lowest total wins; tiebreak by better finish in race 3, then 2, then 1
+  arr.sort((a,b)=> a.total-b.total || (a.f[2]-b.f[2]) || (a.f[1]-b.f[1]) || (a.f[0]-b.f[0]) );
+  const out={};
+  arr.forEach((x,i)=> out[x.id]={total:x.total, place:i+1});
+  return out;
+}
+
+function renderScoring(){
+  const wrap=document.getElementById('scoringWrap');
+  const sel=document.getElementById('roundSel');
+  document.getElementById('bottombar').style.display = (runMode && MOTOS.length)? 'flex':'none';
+  if(!MOTOS.length){
+    sel.style.display='none';
+    wrap.innerHTML='<div class="empty"><svg viewBox="0 0 24 24"><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/><path d="M4 22h16"/></svg><p>Build motos first, then score them here.</p></div>';
+    return;
+  }
+  sel.style.display='flex';
+  let html='';
+  MOTOS.forEach((m,mi)=>{
+    const placings=motoPlacings(m);
+    const roundsDone=[0,1,2].filter(r=> m.riders.every(x=>x.finishes[r]!==null)).length;
+    html+='<div class="moto"><div class="moto-h"><div class="mnum">'+(mi+1)+'</div>'+
+      '<div><div class="t">Moto '+(mi+1)+'</div>'+
+      '<div class="s">'+m.riders.length+' riders · '+roundsDone+' of 3 races done</div></div>'+
+      '<div class="right"><button class="btn sm ghost" data-clr="'+mi+'">Clear</button></div></div>';
+    m.riders.forEach((r,ri)=>{
+      const cur=r.finishes[CUR_ROUND];
+      const cls = cur===1?'p1':cur===2?'p2':cur===3?'p3':cur==='DNS'?'p3':cur!=null?'set':'';
+      const dots=[0,1,2].map(k=>{
+        const f=r.finishes[k];
+        const c = f===null?'':f==='DNS'?'dns':'has';
+        return '<span class="rd '+c+'">'+(f===null?(k+1+''):f==='DNS'?'X':f)+'</span>';
+      }).join('');
+      let result='';
+      if(placings){
+        const p=placings[r.riderId];
+        const cp=SETTINGS.points[p.place]!=null?SETTINGS.points[p.place]:0;
+        result='<div class="result"><div class="pl'+(p.place===1?' win':'')+'">'+ordinal(p.place)+'</div>'+
+          '<div class="cp">'+cp+' pts</div><div class="tot">total '+p.total+'</div></div>';
+      }else{
+        result='<div class="result"><div class="tot">—</div></div>';
+      }
+      html+='<div class="scorerow" data-m="'+mi+'" data-r="'+ri+'">'+
+        '<span class="pos '+cls+'">'+(cur===null?'–':cur==='DNS'?'X':cur)+'</span>'+
+        '<span class="mplate">'+esc(r.plate)+'</span>'+
+        '<div><div class="mname">'+esc(r.first)+' '+esc(r.last)+'</div>'+
+          '<div class="rounddots">'+dots+'</div></div>'+
+        result+'</div>';
+    });
+    html+='</div>';
+  });
+  wrap.innerHTML=html;
+  wrap.querySelectorAll('.scorerow').forEach(el=> el.addEventListener('click',()=> cycleRound(+el.dataset.m,+el.dataset.r)));
+  wrap.querySelectorAll('[data-clr]').forEach(b=> b.addEventListener('click',e=>{e.stopPropagation();MOTOS[+b.dataset.clr].riders.forEach(r=>r.finishes=[null,null,null]);renderScoring();}));
+}
+
+// cycle current round's finish for a rider: – → 1 → 2 … → size → DNS → –
+function cycleRound(mi,ri){
+  const m=MOTOS[mi], r=m.riders[ri], size=m.riders.length;
+  const used=m.riders.map((x,i)=> i!==ri?x.finishes[CUR_ROUND]:null).filter(p=>p!=null && p!=='DNS');
+  let cur=r.finishes[CUR_ROUND];
+  // determine next value
+  if(cur==='DNS'){ r.finishes[CUR_ROUND]=null; renderScoring(); return; }
+  let n=(cur||0)+1;
+  while(n<=size && used.includes(n)) n++;
+  if(n>size){ r.finishes[CUR_ROUND]='DNS'; }
+  else { r.finishes[CUR_ROUND]=n; }
+  renderScoring();
+}
+function ordinal(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
+
+document.getElementById('bbReset').addEventListener('click', ()=>{ MOTOS.forEach(m=>m.riders.forEach(r=>r.finishes=[null,null,null])); renderScoring(); });
+document.getElementById('bbSave').addEventListener('click', saveRace);
+
+async function saveRace(){
+  if(!MOTOS.length){ toast('Nothing to save yet','bad'); return; }
+  const incomplete = MOTOS.map((m,i)=> motoComplete(m)?null:(i+1)).filter(x=>x);
+  if(incomplete.length){
+    toast('Finish all 3 races for moto '+incomplete.join(', ')+' first','bad');
+    return;
+  }
+  const raceNumber = nextRaceLabel();
+  const riders = MOTOS.reduce((n,m)=>n+m.riders.length,0);
+  if(!confirm('Save '+raceNumber+' for the day?\n\n'+MOTOS.length+' motos · '+riders+' riders, 3 races each.\nThis writes final results to the season Sheet.')) return;
+
+  const btn=document.getElementById('bbSave'); btn.disabled=true; btn.textContent='Saving…';
+  try{
+    const night = await apiPost('createRaceNight', {date: today(), raceNumber});
+    const rnId = night.raceNightId;
+    const history=[], results=[];
+    MOTOS.forEach((m,mi)=>{
+      const pl=motoPlacings(m);
+      m.riders.forEach(r=>{
+        const p=pl[r.riderId];
+        const note='R1:'+r.finishes[0]+' R2:'+r.finishes[1]+' R3:'+r.finishes[2]+' total:'+p.total+' place:'+p.place;
+        history.push({riderId:r.riderId, category:r.category, moto:mi+1, builtFrom:r.bumped?'bumped':'age', notes:note});
+        results.push({riderId:r.riderId, category:r.category, moto:mi+1, finishPosition:p.place});
+      });
+    });
+    await apiPost('saveMotoHistory', {raceNightId:rnId, entries:history});
+    await apiPost('saveResults', {raceNightId:rnId, results});
+    await apiPost('setRaceNightStatus', {raceNightId:rnId, status:'Scored'});
+    toast(raceNumber+' saved ✓','ok');
+    const d=await apiGet('bootstrap');
+    RACENIGHTS=d.raceNights||[]; HISTORY=d.recentHistory||{};
+    RIDERS.forEach(r=>r.checkedIn=false);
+    MOTOS=[]; CUR_ROUND=0;
+    document.querySelectorAll('#roundSel .rbtn').forEach((x,i)=>x.classList.toggle('on',i===0));
+    renderStats(); renderCheckin(); renderMotos(); renderScoring();
+    goTab('points'); loadStandings();
+  }catch(e){
+    toast('Save failed: '+e.message,'bad');
+  }finally{
+    btn.disabled=false; btn.innerHTML='Finish &amp; save race day';
+  }
+}
+function nextRaceLabel(){
+  // count existing scored nights -> CR#N
+  const n = RACENIGHTS.length + 1;
+  return 'CR#'+n;
+}
+function today(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+/* ============================================================
+   POINTS / STANDINGS
+   ============================================================ */
+document.getElementById('refreshPoints').addEventListener('click', loadStandings);
+document.getElementById('connBtn').addEventListener('click', ()=> refreshData(true));
+async function loadStandings(){
+  const wrap=document.getElementById('pointsWrap');
+  wrap.innerHTML='<div class="loader"><div class="spin"></div>Loading standings…</div>';
+  try{
+    const d=await apiGet('getStandings');
+    const cats=d.categories||{};
+    const order=ALL_CATS.filter(c=>cats[c]);
+    if(!order.length){
+      wrap.innerHTML='<div class="empty"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/></svg><p>No results yet this season.<br>Standings appear here after your first race.</p></div>';
+      return;
+    }
+    let html='';
+    order.forEach(cat=>{
+      const rows=cats[cat];
+      html+='<div class="standcat"><h3>'+esc(cat)+'</h3><table><thead><tr><th>#</th><th>Name</th><th style="text-align:right">Total</th></tr></thead><tbody>';
+      rows.forEach(r=>{
+        html+='<tr><td class="rk">'+(r.rank||'–')+'</td><td class="name">'+esc(r.first)+' '+esc(r.last)+'</td>'+
+          '<td class="tot">'+r.total+'</td></tr>';
+      });
+      html+='</tbody></table></div>';
+    });
+    wrap.innerHTML=html;
+    document.getElementById('pointsSub').textContent = (d.raceLabels&&d.raceLabels.length? d.raceLabels.length+' races scored':'Season standings by age group');
+  }catch(e){
+    wrap.innerHTML='<div class="empty"><p>Could not load standings.<br><span style="font-size:12px">'+esc(e.message)+'</span></p></div>';
+  }
+}
+
+/* ============================================================
+   ADMIN — add rider, roster, season switch
+   ============================================================ */
+/* ============================================================
+   MODE — View (read-only) vs Run (interactive). One device-wide
+   password unlocks everything: check-in, motos, scoring, admin.
+   ============================================================ */
+function applyMode(){
+  document.body.classList.toggle('viewmode', !runMode);
+  const chip=document.getElementById('modeBtn');
+  chip.className='mode-chip '+(runMode?'run':'view');
+  chip.textContent = runMode?'Run':'View';
+  // admin gate mirrors run mode
+  document.getElementById('adminGate').style.display = runMode ? 'none' : 'block';
+  document.getElementById('adminBody').style.display = runMode ? 'block' : 'none';
+  // bottom save bar only in run mode + scoring tab with motos
+  const onScoring=document.querySelector('.tab[data-tab="scoring"]').classList.contains('on');
+  document.getElementById('bottombar').style.display = (runMode && onScoring && MOTOS.length)?'flex':'none';
+}
+function enterRunMode(){
+  runMode=true; applyMode(); toast('Run mode — this device can make changes','ok');
+}
+function exitRunMode(){
+  runMode=false; applyMode(); toast('Back to view-only','ok');
+}
+// header chip: tap to lock back to view, or open unlock prompt
+document.getElementById('modeBtn').addEventListener('click', ()=>{
+  if(runMode){ if(confirm('Switch this device back to view-only?')) exitRunMode(); }
+  else { promptUnlock(); }
+});
+function promptUnlock(){
+  const v=prompt('Enter the password to run check-in, motos and scoring on this device:');
+  if(v===null) return;
+  if(v===RUN_PASSWORD){ enterRunMode(); }
+  else { toast('Incorrect password','bad'); }
+}
+function showAdmin(){
+  if(!runMode){ setTimeout(()=>{ const p=document.getElementById('adminPass'); if(p) p.focus(); }, 50); }
+}
+function tryUnlock(){
+  const v=document.getElementById('adminPass').value;
+  document.getElementById('adminPass').value='';
+  if(v===RUN_PASSWORD){ enterRunMode(); }
+  else { toast('Incorrect password','bad'); document.getElementById('adminPass').focus(); }
+}
+document.getElementById('adminUnlock').addEventListener('click', tryUnlock);
+document.getElementById('adminPass').addEventListener('keydown', e=>{ if(e.key==='Enter') tryUnlock(); });
+
+document.getElementById('addRiderBtn').addEventListener('click', addRider);
+async function addRider(){
+  const first=val('aFirst'), last=val('aLast'), birth=val('aBirth'), sex=val('aSex'), cls=val('aClass'), plate=val('aPlate');
+  if(!first||!last||!birth){ toast('First, last and birth year are required','bad'); return; }
+  const btn=document.getElementById('addRiderBtn'); btn.disabled=true; btn.textContent='Adding…';
+  try{
+    await apiPost('addRider', {rider:{first,last,birthYear:+birth,sex,cls,plate}});
+    toast(first+' '+last+' added ✓','ok');
+    ['aFirst','aLast','aBirth','aPlate'].forEach(id=>document.getElementById(id).value='');
+    const d=await apiGet('bootstrap');
+    RIDERS=(d.riders||[]).map(r=>Object.assign({},r,{checkedIn:false}));
+    renderCheckin(); renderStats(); renderRoster();
+  }catch(e){ toast('Could not add rider: '+e.message,'bad'); }
+  finally{ btn.disabled=false; btn.textContent='Add rider'; }
+}
+function renderRoster(){
+  document.getElementById('rosterTitle').textContent='Roster ('+RIDERS.length+')';
+  const wrap=document.getElementById('rosterList');
+  const list=RIDERS.slice().sort((a,b)=>a.age-b.age||(a.last||'').localeCompare(b.last||''));
+  wrap.innerHTML = list.map(r=>
+    '<div class="admin-rider"><div><div class="rname">'+esc(r.first)+' '+esc(r.last)+'</div>'+
+    '<div class="rmeta">'+esc(r.category)+' · '+r.cls+'</div></div>'+
+    '<span class="plate edit-plate" data-edit="'+r.riderId+'" title="Tap to change plate">'+esc(r.plate)+'</span>'+
+    '<span class="cls '+r.cls+' edit-class" data-class="'+r.riderId+'" title="Tap to change class">'+r.cls+'</span></div>'
+  ).join('');
+  wrap.querySelectorAll('.edit-plate').forEach(el=> el.addEventListener('click',()=> editPlate(el.dataset.edit)));
+  wrap.querySelectorAll('.edit-class').forEach(el=> el.addEventListener('click',()=> editClass(el.dataset.class)));
+}
+async function loadSeasons(){
+  try{
+    const d=await apiGet('listSeasons');
+    SEASONS=d.seasons||[];
+    const sel=document.getElementById('seasonSelect');
+    sel.innerHTML = SEASONS.map(s=>'<option value="'+s.year+'"'+(String(s.year)===String(d.active)?' selected':'')+'>'+esc(s.name)+'</option>').join('');
+    sel.onchange = async ()=>{
+      try{ await apiPost('setActiveSeason',{year:sel.value}); toast('Active season: '+sel.value,'ok'); setTimeout(()=>location.reload(),700); }
+      catch(e){ toast('Could not switch season: '+e.message,'bad'); }
+    };
+  }catch(e){ /* season switchboard optional */ }
+}
+
+/* ============================================================
+   Utils
+   ============================================================ */
+/* ---- Class editing (Admin roster) ---- */
+const CLASSES=['Novice','Intermediate','Expert','Junior','U23','Elite'];
+async function editClass(riderId){
+  const r=RIDERS.find(x=>x.riderId===riderId);
+  if(!r) return;
+  const pick=await classPicker(r);
+  if(pick===null || pick===r.cls) return;
+  try{
+    await apiPost('updateRider', {rider:{riderId:riderId, cls:pick}});
+    r.cls=pick;
+    MOTOS.forEach(m=> m.riders.forEach(mr=>{ if(mr.riderId===riderId) mr.cls=pick; }));
+    renderRoster(); renderCheckin(); renderMotos(); renderScoring();
+    toast(r.first+' → '+pick,'ok');
+  }catch(e){ toast('Could not update class: '+e.message,'bad'); }
+}
+function classPicker(r){
+  return new Promise(resolve=>{
+    const ov=document.createElement('div'); ov.className='overlay';
+    ov.innerHTML='<div class="sheet"><div class="sheet-h">Class for '+esc(r.first)+' '+esc(r.last)+'</div>'+
+      CLASSES.map(c=>'<button class="sheet-opt'+(c===r.cls?' cur':'')+'" data-c="'+c+'"><span class="cls '+c+'">'+c+'</span> '+c+'</button>').join('')+
+      '<button class="sheet-opt cancel" data-c="">Cancel</button></div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click',e=>{
+      if(e.target===ov){ cleanup(); resolve(null); return; }
+      const b=e.target.closest('.sheet-opt'); if(!b) return;
+      const c=b.dataset.c; cleanup(); resolve(c||null);
+    });
+    function cleanup(){ ov.remove(); }
+  });
+}
+
+/* ---- Plate editing (used on Check-in and Admin) ---- */
+async function editPlate(riderId){
+  const r = RIDERS.find(x=>x.riderId===riderId);
+  if(!r) return;
+  const cur = String(r.plate||'');
+  const next = prompt('Plate number for '+r.first+' '+r.last+':', cur);
+  if(next===null) return;                    // cancelled
+  const plate = next.trim();
+  if(plate===cur) return;                     // no change
+  try{
+    await apiPost('updateRider', {rider:{riderId:riderId, plate:plate}});
+    r.plate = plate;
+    // reflect in any built moto too
+    MOTOS.forEach(m=> m.riders.forEach(mr=>{ if(mr.riderId===riderId) mr.plate=plate; }));
+    renderCheckin(); renderRoster(); renderMotos(); renderScoring();
+    toast('Plate updated → '+(plate||'(blank)'),'ok');
+  }catch(e){ toast('Could not update plate: '+e.message,'bad'); }
+}
+
+function val(id){ return document.getElementById(id).value.trim(); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+let toastTimer;
+function toast(msg,kind){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className='toast show'+(kind?(' '+kind):'');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>{ t.className='toast'+(kind?(' '+kind):''); }, 2600);
+}
+
+boot();
+</script>
+</body>
+</html>
