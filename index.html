@@ -467,8 +467,9 @@ function setConn(state){
 
 /* ============================================================
    Auto-refresh — keeps the read-only view current for parents.
-   Only runs in View mode, so it never disturbs an official's
-   in-progress check-in / motos / scoring on a Run-mode device.
+   - Runs ONLY in View mode (never on a live/Run-mode device, so it
+     can never disturb a scorer mid-entry at the finish line).
+   - Points/standings never auto-refresh — manual only.
    ============================================================ */
 let refreshTimer=null;
 function startAutoRefresh(){
@@ -478,14 +479,15 @@ function startAutoRefresh(){
 async function refreshData(manual){
   try{
     const d=await apiGet('bootstrap');
-    // preserve check-in flags by riderId (harmless in view mode, safe in run mode)
+    // preserve check-in flags by riderId
     const wasIn={}; RIDERS.forEach(r=>{ if(r.checkedIn) wasIn[r.riderId]=true; });
     RIDERS=(d.riders||[]).map(r=>Object.assign({},r,{checkedIn:!!wasIn[r.riderId]}));
     SETTINGS=d.settings||SETTINGS; RACENIGHTS=d.raceNights||[]; HISTORY=d.recentHistory||{};
     setConn('live');
     renderCheckin(); renderStats(); renderRoster();
+    // Standings refresh only on an explicit manual request, never on the timer
     const onPoints=document.querySelector('.tab[data-tab="points"]').classList.contains('on');
-    if(onPoints) loadStandings();
+    if(manual && onPoints) loadStandings();
     if(manual) toast('Updated','ok');
   }catch(e){ setConn('err'); if(manual) toast('Could not refresh','bad'); }
 }
