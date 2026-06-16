@@ -137,6 +137,18 @@ body.viewmode .viewnote{display:block}
 .rname{font-size:14.5px;font-weight:600}
 .rmeta{font-size:11.5px;color:var(--muted);margin-top:1px}
 .plate{font-size:12.5px;font-weight:700;padding:3px 8px;border-radius:6px;background:var(--ink);color:#fff;font-variant-numeric:tabular-nums}
+/* UCI plate colours — by sex (Challenge) or championship class */
+.plate.pc-yellow{background:#F5C518;color:#1A1A1A}
+.plate.pc-blue{background:#1565C0;color:#fff}
+.plate.pc-black{background:#1A1A1A;color:#fff}
+.plate.pc-grey{background:#8A979C;color:#fff}
+.plate.pc-white{background:#fff;color:#1A1A1A;box-shadow:inset 0 0 0 1px #CBD5D8}
+/* moto-row plate variant keeps same colours */
+.mplate.pc-yellow{background:#F5C518;color:#1A1A1A}
+.mplate.pc-blue{background:#1565C0;color:#fff}
+.mplate.pc-black{background:#1A1A1A;color:#fff}
+.mplate.pc-grey{background:#8A979C;color:#fff}
+.mplate.pc-white{background:#fff;color:#1A1A1A;box-shadow:inset 0 0 0 1px #CBD5D8}
 .edit-plate{cursor:pointer;position:relative}
 .edit-plate::after{content:'';position:absolute;right:-3px;top:-3px;width:7px;height:7px;border-radius:50%;background:var(--teal);border:1.5px solid #fff}
 .cls{font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px}
@@ -229,6 +241,26 @@ td.tot{font-weight:800;text-align:right}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .admin-rider{display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line-soft)}
 .admin-rider:last-child{border-bottom:none}
+
+/* Help accordion */
+.acc{border:1px solid var(--line);border-radius:var(--radius-sm);margin-bottom:8px;overflow:hidden}
+.acc-h{display:flex;align-items:center;gap:9px;padding:12px 13px;cursor:pointer;background:#fff;font-weight:700;font-size:14px}
+.acc-h:active{background:#F7FAFB}
+.acc-h .ico{width:26px;height:26px;border-radius:7px;background:var(--teal-tint);color:var(--teal);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px}
+.acc-h .chev{margin-left:auto;color:var(--muted-soft);transition:transform .15s}
+.acc.open .acc-h .chev{transform:rotate(90deg)}
+.acc-body{display:none;padding:4px 14px 14px;font-size:13.5px;line-height:1.5;color:var(--ink)}
+.acc.open .acc-body{display:block}
+.acc-body h4{font-size:13px;font-weight:800;color:var(--teal);margin:14px 0 5px;text-transform:uppercase;letter-spacing:.03em}
+.acc-body h4:first-child{margin-top:4px}
+.acc-body ol,.acc-body ul{margin:0 0 8px 18px}
+.acc-body li{margin-bottom:5px}
+.acc-body p{margin-bottom:8px}
+.acc-body .tip{background:var(--teal-tint);border-left:3px solid var(--teal);border-radius:6px;padding:9px 11px;margin:8px 0;font-size:12.5px}
+.acc-body .warn{background:var(--warn-tint);border-left:3px solid var(--warn);border-radius:6px;padding:9px 11px;margin:8px 0;font-size:12.5px}
+.acc-body code{font-family:Consolas,monospace;background:#F0F2F3;padding:1px 5px;border-radius:4px;font-size:12px}
+.acc-body b{font-weight:700}
 
 /* Empty + toast + loader */
 .empty{text-align:center;padding:48px 20px;color:var(--muted)}
@@ -391,6 +423,12 @@ td.tot{font-weight:800;text-align:right}
     <div class="card">
       <h3 id="rosterTitle">Roster</h3>
       <div id="rosterList"></div>
+    </div>
+
+    <div class="card">
+      <h3>Help &amp; guides</h3>
+      <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Tap a topic to expand. Everything you need to run, manage, and maintain the app.</p>
+      <div id="helpAccordion"></div>
     </div>
     </div>
   </section>
@@ -576,7 +614,7 @@ function riderRow(r){
     '<div><div class="rname">'+esc(r.first)+' '+esc(r.last)+'</div>'+
     '<div class="rmeta">'+esc(r.category)+' · age '+r.age+'</div></div>'+
     '<span class="cls '+r.cls+'">'+r.cls+'</span>'+
-    '<span class="plate edit-plate" data-edit="'+r.riderId+'" title="Tap to change plate">'+esc(r.plate)+'</span></div>';
+    '<span class="plate '+plateClass(r)+' edit-plate" data-edit="'+r.riderId+'" title="Tap to change plate">'+esc(r.plate)+'</span></div>';
 }
 function toggleIn(id){
   const r=RIDERS.find(x=>x.riderId===id);
@@ -667,7 +705,7 @@ function renderMotos(){
       const sel = MOVE && MOVE.motoIdx===mi && MOVE.riderIdx===ri;
       const hint = lastRaced(r.riderId);
       html+='<div class="mrow'+(sel?' sel':'')+'" data-m="'+mi+'" data-r="'+ri+'">'+
-        '<span class="mplate">'+esc(r.plate)+'</span>'+
+        '<span class="mplate '+plateClass(r)+'">'+esc(r.plate)+'</span>'+
         '<span class="mname">'+esc(r.first)+' '+esc(r.last)+
           (r.bumped?' <span class="tag">bumped</span>':'')+
           (hint&&hint!==m.cat?' <span class="tag" style="background:var(--teal-tint);color:var(--teal)">last: '+esc(hint)+'</span>':'')+
@@ -793,7 +831,7 @@ function renderScoring(){
       }
       html+='<div class="scorerow" data-m="'+mi+'" data-r="'+ri+'">'+
         '<span class="pos '+cls+'">'+(cur===null?'–':cur==='DNS'?'X':cur)+'</span>'+
-        '<span class="mplate">'+esc(r.plate)+'</span>'+
+        '<span class="mplate '+plateClass(r)+'">'+esc(r.plate)+'</span>'+
         '<div><div class="mname">'+esc(r.first)+' '+esc(r.last)+'</div>'+
           '<div class="rounddots">'+dots+'</div></div>'+
         result+'</div>';
@@ -943,6 +981,7 @@ function promptUnlock(){
 }
 function showAdmin(){
   if(!runMode){ setTimeout(()=>{ const p=document.getElementById('adminPass'); if(p) p.focus(); }, 50); }
+  renderHelp();
 }
 function tryUnlock(){
   const v=document.getElementById('adminPass').value;
@@ -975,7 +1014,7 @@ function renderRoster(){
   wrap.innerHTML = list.map(r=>
     '<div class="admin-rider"><div><div class="rname">'+esc(r.first)+' '+esc(r.last)+'</div>'+
     '<div class="rmeta">'+esc(r.category)+' · '+r.cls+'</div></div>'+
-    '<span class="plate edit-plate" data-edit="'+r.riderId+'" title="Tap to change plate">'+esc(r.plate)+'</span>'+
+    '<span class="plate '+plateClass(r)+' edit-plate" data-edit="'+r.riderId+'" title="Tap to change plate">'+esc(r.plate)+'</span>'+
     '<span class="cls '+r.cls+' edit-class" data-class="'+r.riderId+'" title="Tap to change class">'+r.cls+'</span></div>'
   ).join('');
   wrap.querySelectorAll('.edit-plate').forEach(el=> el.addEventListener('click',()=> editPlate(el.dataset.edit)));
@@ -992,6 +1031,123 @@ async function loadSeasons(){
       catch(e){ toast('Could not switch season: '+e.message,'bad'); }
     };
   }catch(e){ /* season switchboard optional */ }
+}
+
+/* ============================================================
+   HELP — in-app guides (Admin only). Tap to expand.
+   ============================================================ */
+const HELP_TOPICS = [
+  { icon:'\u{1F3C1}', title:'Race night — quick guide', html:`
+    <div class="tip"><b>The flow:</b> Check riders in → Build motos → Adjust &amp; lock → Score 3 races → Finish &amp; save.</div>
+    <h4>Before you start</h4>
+    <ol>
+      <li>Open the app and <b>unlock this device</b>: tap the <b>View</b> chip top-right, enter the password. It turns green and reads <b>Run</b>.</li>
+      <li>Only devices that make changes (check-in, staging, finish line) need the password. Everyone else stays in View mode (read-only).</li>
+    </ol>
+    <h4>1. Check riders in</h4>
+    <ul>
+      <li>Check-in tab: tap a rider to check in (row turns green), tap again to undo.</li>
+      <li>Search by name or plate. Fix a plate by tapping the black plate badge.</li>
+    </ul>
+    <h4>2. Build the motos</h4>
+    <ol>
+      <li>Motos tab → <b>Build motos</b> (groups riders automatically, max 8).</li>
+      <li>Blend by skill: tap a rider's <b>Move</b> button to send them to another moto or a new one.</li>
+      <li>Yellow banner = moto has only 1 rider (move someone in). Red banner = same plate twice in one moto (change one).</li>
+      <li><b>Lock</b> each moto when happy.</li>
+    </ol>
+    <h4>3. Score the day</h4>
+    <p>Each moto races <b>three times</b> — lowest combined finish wins (like golf).</p>
+    <ol>
+      <li>Scoring tab → pick the round (Race 1, 2, or 3) at the top.</li>
+      <li>Tap the circle by each rider to set their finish for that round. One extra tap marks <b>DNS</b>.</li>
+      <li>Score everyone in Race 1, then Race 2, then Race 3.</li>
+      <li>Once a moto has all 3 races, placings and club points show automatically.</li>
+    </ol>
+    <h4>4. Finish &amp; save</h4>
+    <ol>
+      <li>When every moto is fully scored, tap <b>Finish &amp; save race day</b> and confirm.</li>
+      <li>Results write to the Sheet and the Points standings update.</li>
+    </ol>
+    <div class="warn"><b>Save once, at the end.</b> Don't save test or practice data on a real race night.</div>
+  `},
+  { icon:'\u{1F4CB}', title:'Managing riders, plates & classes', html:`
+    <h4>Add a rider</h4>
+    <ol>
+      <li>Admin tab → <b>Add a rider</b>.</li>
+      <li>Enter name, <b>birth year</b> (not age — the app calculates age), sex, class, plate.</li>
+      <li>Tap <b>Add rider</b>.</li>
+    </ol>
+    <h4>Change a plate</h4>
+    <p>Tap any rider's plate badge — on Check-in or in the Admin roster — and type the new plate. Leading zeros (083) are kept.</p>
+    <h4>Change a class</h4>
+    <p>Tap the colored class badge in the Admin roster, pick the new class. Use this as riders move up.</p>
+    <div class="tip"><b>Classes:</b> Novice (green) · Intermediate (amber) · Expert (green) · Junior (red) · U23 (blue) · Elite (black). Club points are by age group — class just helps blend motos by skill.</div>
+    <h4>Age &amp; category</h4>
+    <p>You never type age. The app uses <b>race age = season year − birth year</b> and sorts riders into categories automatically, every season. That's why birth year matters and age doesn't.</p>
+  `},
+  { icon:'\u{1F504}', title:'End-of-season rollover (2027 and on)', html:`
+    <p><b>Once a year, after the final race:</b></p>
+    <ol>
+      <li>Open the current season's Google Sheet (e.g. <i>13th Ave BMX 2026 Season</i>).</li>
+      <li><b>File → Make a copy</b>, name it for the new year (e.g. <i>13th Ave BMX 2027 Season</i>).</li>
+      <li>In the copy, <b>clear the race data</b>: delete all rows (keep headers) on <b>RaceNights</b>, <b>Results</b>, and <b>MotoHistory</b>. Leave Riders.</li>
+      <li><b>Update the roster</b>: import new members from CCNBIKES, remove non-returning riders, add new ones. Birth years carry forward — don't touch ages.</li>
+      <li><b>Register the season in the app</b> (see next topic) and switch to it: Admin → Season dropdown.</li>
+    </ol>
+    <div class="tip"><b>Why a new file each year:</b> last year's Sheet stays untouched as a permanent archive. The app just points at whichever season is active.</div>
+  `},
+  { icon:'\u2699\uFE0F', title:'How it all connects (technical)', html:`
+    <h4>The three pieces</h4>
+    <ul>
+      <li><b>Google Sheet</b> — the database. One per season, in the club Google Drive. Tabs: Riders, RaceNights, Results, MotoHistory, Settings.</li>
+      <li><b>Apps Script</b> — the free backend that reads/writes the Sheet. Runs as the club Google account (no API keys). Project: <i>13th Ave BMX Backend</i> at script.google.com.</li>
+      <li><b>The app (index.html)</b> — hosted free on GitHub Pages, repo <b>bmx</b>. Public link: <b>13thavebmx-bit.github.io/bmx/</b></li>
+    </ul>
+    <h4>Update the app</h4>
+    <ol>
+      <li>GitHub → <b>bmx</b> repo → Code → <b>Add file → Upload files</b>, drop in the new index.html, <b>Commit changes</b>.</li>
+      <li>Pages republishes in about a minute. The URL never changes.</li>
+    </ol>
+    <h4>Register a new season with the backend</h4>
+    <p>After making &amp; cleaning the new Sheet, get its <b>File ID</b> (the code in the Sheet URL between <code>/d/</code> and <code>/edit</code>), then in the Apps Script editor run:</p>
+    <p><code>addSeason(2027, '2027 Season', 'FILE_ID')</code><br><code>setActiveSeason(2027)</code></p>
+    <div class="warn">The Sheet must be a <b>native Google Sheet</b>, not an uploaded Excel file. If it shows an .XLSX badge, open it and use <b>File → Save as Google Sheets</b> first.</div>
+    <h4>Accounts</h4>
+    <ul>
+      <li>Google: 13thavebmx@gmail.com (Sheets + backend)</li>
+      <li>GitHub: 13thavebmx-bit (hosting)</li>
+    </ul>
+  `},
+  { icon:'\u{1F6E0}\uFE0F', title:'Troubleshooting', html:`
+    <h4>App says "offline" / won't load</h4>
+    <p>Check the device's internet, then tap the connection status (top-right) to retry. If stuck, close and reopen the link.</p>
+    <h4>Changes aren't showing on another device</h4>
+    <p>Tap the connection status to pull the latest. In Run mode, refresh is always manual (on purpose, so scoring is never interrupted).</p>
+    <h4>I can't tap anything</h4>
+    <p>The device is in <b>View mode</b>. Tap the <b>View</b> chip top-right and enter the password to switch to Run mode.</p>
+    <h4>"Finish &amp; save" won't save</h4>
+    <p>Every moto needs all three races scored first. The app names the moto that's not done.</p>
+    <h4>Wrong finish entered</h4>
+    <p>Tap the rider's circle again to cycle, or tap <b>Clear</b> on the moto to reset its finishes.</p>
+    <h4>We saved test data by mistake</h4>
+    <p>In the season Sheet, delete the unwanted rows from <b>Results</b>, <b>RaceNights</b>, and <b>MotoHistory</b> (keep headers), then refresh the app.</p>
+    <h4>A plate lost its leading zero</h4>
+    <p>Re-enter it in the app (tap the plate badge) — it writes back as text. The Sheet's Plate column should be formatted as plain text.</p>
+    <div class="tip">Parents can't break anything — without the password every device is read-only.</div>
+  `},
+];
+let helpBuilt=false;
+function renderHelp(){
+  const wrap=document.getElementById('helpAccordion');
+  if(!wrap || helpBuilt) return;
+  wrap.innerHTML = HELP_TOPICS.map((t,i)=>
+    '<div class="acc" data-acc="'+i+'"><div class="acc-h"><span class="ico">'+t.icon+'</span>'+
+    '<span>'+esc(t.title)+'</span><span class="chev">\u203A</span></div>'+
+    '<div class="acc-body">'+t.html+'</div></div>'
+  ).join('');
+  wrap.querySelectorAll('.acc-h').forEach(h=> h.addEventListener('click',()=> h.parentElement.classList.toggle('open')));
+  helpBuilt=true;
 }
 
 /* ============================================================
@@ -1048,6 +1204,15 @@ async function editPlate(riderId){
 }
 
 function val(id){ return document.getElementById(id).value.trim(); }
+/* UCI plate colour: Junior=black, U23=grey, Elite=white;
+   Challenge (Novice/Int/Expert) = yellow if male, blue if female */
+function plateClass(r){
+  const c=(r.cls||'').toLowerCase();
+  if(c==='junior') return 'pc-black';
+  if(c==='u23')    return 'pc-grey';
+  if(c==='elite')  return 'pc-white';
+  return (String(r.sex||'').toLowerCase()[0]==='f') ? 'pc-blue' : 'pc-yellow';
+}
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 let toastTimer;
 function toast(msg,kind){
