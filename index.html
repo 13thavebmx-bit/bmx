@@ -180,6 +180,9 @@ body.viewmode .viewnote{display:block}
 .mrow .mname{font-size:13.5px;font-weight:600;flex:1}
 .mrow .tag{font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--int-bg);color:var(--int)}
 .mrow .age{font-size:11px;color:var(--muted-soft)}
+.agebadge{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:22px;padding:0 6px;
+  border-radius:6px;background:var(--teal);color:#fff;font-size:14px;font-weight:800;vertical-align:middle;
+  margin:0 2px;font-variant-numeric:tabular-nums}
 .mrow .mv{font-size:11px;color:var(--teal);font-weight:700;border:1px solid var(--teal);
   border-radius:6px;padding:3px 8px;background:#fff}
 .banner{font-size:12px;padding:7px 12px;display:flex;align-items:center;gap:6px}
@@ -200,6 +203,7 @@ body.viewmode .viewnote{display:block}
 .pos.p2{background:#F0F1F2;color:#444;border-color:#B4B2A9}
 .pos.p3{background:var(--exp-bg);color:var(--exp);border-color:#E8836A}
 .pos.set{background:var(--teal-tint);color:var(--teal);border-color:var(--teal)}
+.pos.dnf{background:var(--bad-tint);color:var(--bad);border-color:#E8A39A;font-size:10px}
 .pts{margin-left:auto;font-size:13px;font-weight:700;min-width:42px;text-align:right;font-variant-numeric:tabular-nums}
 
 /* Round selector + 3-round scoring */
@@ -211,7 +215,7 @@ body.viewmode .viewnote{display:block}
 .scorerow:last-of-type{border-bottom:none}
 .scorerow:active{background:#F7FAFB}
 .rounddots{display:flex;gap:4px;margin-top:3px}
-.rd{font-size:10px;font-weight:700;width:18px;height:18px;border-radius:4px;display:flex;align-items:center;
+.rd{font-size:10px;font-weight:700;min-width:18px;height:18px;padding:0 3px;border-radius:4px;display:flex;align-items:center;
   justify-content:center;background:#F0F2F3;color:var(--muted-soft);font-variant-numeric:tabular-nums}
 .rd.has{background:var(--teal-tint);color:var(--teal)}
 .rd.dns{background:var(--bad-tint);color:var(--bad)}
@@ -486,6 +490,8 @@ let RIDERS = [], SETTINGS = {points:{1:50,2:40,3:35,4:30,5:25,6:20,7:15,8:10},mi
 let MOTOS = [];
 let MOVE = null; // {motoIdx, riderIdx} when moving a rider
 let LIVE = null; // published live snapshot (read-only devices render this)
+let LIVE_META = null; // {publishedAt, publishedBy} of the current snapshot
+const DEVICE_ID = 'd'+Math.random().toString(36).slice(2,9); // unique per tab/session
 
 /* ============================================================
    API helpers
@@ -535,6 +541,7 @@ async function refreshData(manual){
     RIDERS=(d.riders||[]).map(r=>Object.assign({},r,{checkedIn:!!wasIn[r.riderId]}));
     SETTINGS=d.settings||SETTINGS; RACENIGHTS=d.raceNights||[]; HISTORY=d.recentHistory||{};
     LIVE = (d.live && d.live.live) ? d.live.live : null;
+    LIVE_META = (LIVE) ? {publishedAt:LIVE.publishedAt||null, publishedBy:LIVE.publishedBy||null} : null;
     setConn('live');
     if(!runMode) applyLiveToView();   // read-only devices mirror the published day
     renderCheckin(); renderStats(); renderRoster();
@@ -571,6 +578,7 @@ async function boot(){
     RACENIGHTS = d.raceNights||[];
     HISTORY = d.recentHistory||{};
     LIVE = (d.live && d.live.live) ? d.live.live : null;
+    LIVE_META = (LIVE) ? {publishedAt:LIVE.publishedAt||null, publishedBy:LIVE.publishedBy||null} : null;
     if(d.season){ document.getElementById('seasonLabel').textContent = d.season.year+' Season'; }
     setConn('live');
     applyLiveToView();
@@ -620,7 +628,9 @@ document.getElementById('clearSearch').addEventListener('click', ()=>{searchEl.v
 
 function renderCheckin(){
   const q=searchEl.value.trim().toLowerCase();
-  let list = RIDERS.slice().sort((a,b)=> a.age-b.age || (a.last||'').localeCompare(b.last||''));
+  const catRank = c => { const i = ALL_CATS.indexOf(c); return i<0 ? 999 : i; };
+  let list = RIDERS.slice().sort((a,b)=>
+    catRank(a.category)-catRank(b.category) || a.age-b.age || (a.last||'').localeCompare(b.last||''));
   if(q) list = list.filter(r=> (r.first+' '+r.last).toLowerCase().includes(q) || String(r.plate).toLowerCase().includes(q));
   const wrap=document.getElementById('checkinList');
   if(!list.length){ wrap.innerHTML='<div class="empty"><p>No riders match that search.</p></div>'; return; }
@@ -744,11 +754,11 @@ function renderMotos(){
       html+='<div class="mrow'+(sel?' sel':'')+'" data-m="'+mi+'" data-r="'+ri+'">'+
         '<span class="mplate '+plateClass(r)+'">'+esc(r.plate)+'</span>'+
         '<span class="mname">'+esc(r.first)+' '+esc(r.last)+
+          ' <span class="agebadge">'+r.age+'</span>'+
           (r.bumped?' <span class="tag">bumped</span>':'')+
           (hint&&hint!==m.cat?' <span class="tag" style="background:var(--teal-tint);color:var(--teal)">last: '+esc(hint)+'</span>':'')+
         '</span>'+
         '<span class="cls '+r.cls+'">'+r.cls+'</span>'+cruiserTag(r)+
-        '<span class="age">'+r.age+'y</span>'+
         '<span class="mv" data-mvfrom="'+mi+'" data-mvr="'+ri+'">Move</span>'+
         '</div>';
     });
@@ -807,9 +817,11 @@ document.querySelectorAll('#roundSel .rbtn').forEach(b=>{
   });
 });
 
-// DNS scores as worst-in-moto+1 for the golf total
+// Golf totals: DNF (started, didn't finish) = last place (moto size);
+// DNS (didn't start) = worst, one past last (size+1)
 function roundScore(finish, motoSize){
   if(finish===null) return null;
+  if(finish==='DNF') return motoSize;
   if(finish==='DNS') return motoSize+1;
   return finish;
 }
@@ -852,11 +864,12 @@ function renderScoring(){
       '<div class="right"><button class="btn sm ghost" data-clr="'+mi+'">Clear</button></div></div>';
     m.riders.forEach((r,ri)=>{
       const cur=r.finishes[CUR_ROUND];
-      const cls = cur===1?'p1':cur===2?'p2':cur===3?'p3':cur==='DNS'?'p3':cur!=null?'set':'';
+      const cls = cur===1?'p1':cur===2?'p2':cur===3?'p3':(cur==='DNS'||cur==='DNF')?'dnf':cur!=null?'set':'';
       const dots=[0,1,2].map(k=>{
         const f=r.finishes[k];
-        const c = f===null?'':f==='DNS'?'dns':'has';
-        return '<span class="rd '+c+'">'+(f===null?(k+1+''):f==='DNS'?'X':f)+'</span>';
+        const c = f===null?'':(f==='DNS'||f==='DNF')?'dns':'has';
+        const lbl = f===null?(k+1+''):(f==='DNF'?'DNF':f==='DNS'?'DNS':f);
+        return '<span class="rd '+c+'">'+lbl+'</span>';
       }).join('');
       let result='';
       if(placings){
@@ -868,7 +881,7 @@ function renderScoring(){
         result='<div class="result"><div class="tot">—</div></div>';
       }
       html+='<div class="scorerow" data-m="'+mi+'" data-r="'+ri+'">'+
-        '<span class="pos '+cls+'">'+(cur===null?'–':cur==='DNS'?'X':cur)+'</span>'+
+        '<span class="pos '+cls+'">'+(cur===null?'–':cur==='DNF'?'DNF':cur==='DNS'?'DNS':cur)+'</span>'+
         '<span class="mplate '+plateClass(r)+'">'+esc(r.plate)+'</span>'+
         '<div><div class="mname">'+esc(r.first)+' '+esc(r.last)+'</div>'+
           '<div class="rounddots">'+dots+'</div></div>'+
@@ -881,16 +894,16 @@ function renderScoring(){
   wrap.querySelectorAll('[data-clr]').forEach(b=> b.addEventListener('click',e=>{e.stopPropagation();MOTOS[+b.dataset.clr].riders.forEach(r=>r.finishes=[null,null,null]);renderScoring();}));
 }
 
-// cycle current round's finish for a rider: – → 1 → 2 … → size → DNS → –
+// cycle current round's finish: – → 1 → 2 … → size → DNF → DNS → –
 function cycleRound(mi,ri){
   const m=MOTOS[mi], r=m.riders[ri], size=m.riders.length;
-  const used=m.riders.map((x,i)=> i!==ri?x.finishes[CUR_ROUND]:null).filter(p=>p!=null && p!=='DNS');
+  const used=m.riders.map((x,i)=> i!==ri?x.finishes[CUR_ROUND]:null).filter(p=>p!=null && p!=='DNS' && p!=='DNF');
   let cur=r.finishes[CUR_ROUND];
-  // determine next value
+  if(cur==='DNF'){ r.finishes[CUR_ROUND]='DNS'; renderScoring(); return; }
   if(cur==='DNS'){ r.finishes[CUR_ROUND]=null; renderScoring(); return; }
   let n=(cur||0)+1;
   while(n<=size && used.includes(n)) n++;
-  if(n>size){ r.finishes[CUR_ROUND]='DNS'; }
+  if(n>size){ r.finishes[CUR_ROUND]='DNF'; }
   else { r.finishes[CUR_ROUND]=n; }
   renderScoring();
 }
@@ -931,9 +944,17 @@ async function publishToLive(manual){
   const btn=document.getElementById('bbPublish'); const orig=btn.textContent;
   if(manual){ btn.disabled=true; btn.textContent='Publishing…'; }
   try{
-    await apiPost('publishLive', { live:{ checkedIn, motos, publishedAt:new Date().toISOString() } });
+    await apiPost('publishLive', { live:{ checkedIn, motos, publishedAt:new Date().toISOString(), publishedBy:DEVICE_ID } });
     LIVE = { checkedIn, motos };
-    if(manual) toast('Published to live ✓','ok');
+    LIVE_META = { publishedAt:new Date().toISOString(), publishedBy:DEVICE_ID };
+    if(manual){
+      toast('Published to live ✓','ok');
+      setTimeout(()=>{
+        if(confirm('Published.\n\nHand off this device to View mode now?\n\n(Do this once check-in & motos are set, so the finish-line device can take over scoring without conflicts.)')){
+          exitRunMode();
+        }
+      }, 200);
+    }
     else { const t=document.getElementById('connTxt'); if(t){ const o=t.textContent; t.textContent='saved ✓'; setTimeout(()=>{ if(t.textContent==='saved ✓') t.textContent=o; },1500); } }
   }catch(e){ if(manual) toast('Publish failed: '+e.message,'bad'); }
   finally{ if(manual){ btn.disabled=false; btn.textContent=orig; } }
@@ -1053,9 +1074,23 @@ function updateBottomBar(){
   document.getElementById('bbSave').style.display = (show && onScoring) ? 'inline-flex' : 'none';
 }
 function enterRunMode(){
+  // Warn if another device appears to be actively running (published recently, not us)
+  if(anotherDeviceActive()){
+    if(!confirm('Another device is already running this race (it published recently).\n\nRunning two devices at once can overwrite each other\u2019s work. Usually only the finish-line device should be live during scoring.\n\nTake over on this device anyway?')){
+      return;
+    }
+  }
   runMode=true; applyMode(); toast('Run mode — this device can make changes','ok');
   startAutoPublish();
   offerRestore();
+}
+/* Heuristic: another device is "active" if the live snapshot was published
+   by a different device within the last 10 minutes. */
+function anotherDeviceActive(){
+  if(!LIVE_META || !LIVE_META.publishedAt) return false;
+  if(LIVE_META.publishedBy && LIVE_META.publishedBy===DEVICE_ID) return false; // it was us
+  const age = Date.now() - new Date(LIVE_META.publishedAt).getTime();
+  return age >= 0 && age < 10*60*1000; // within 10 minutes
 }
 /* After unlocking, if the backend holds a published race in progress and
    this device hasn't built anything yet, offer to restore it. */
@@ -1198,7 +1233,7 @@ const HELP_TOPICS = [
     <p>Each moto races <b>three times</b> — lowest combined finish wins (like golf).</p>
     <ol>
       <li>Scoring tab → pick the round (Race 1, 2, or 3) at the top.</li>
-      <li>Tap the circle by each rider to set their finish for that round. One extra tap marks <b>DNS</b>.</li>
+      <li>Tap the circle by each rider to set their finish for that round. Tapping past last place gives <b>DNF</b> (started, didn't finish), then <b>DNS</b> (didn't start), then back to blank.</li>
       <li>Score everyone in Race 1, then Race 2, then Race 3.</li>
       <li>Once a moto has all 3 races, placings and club points show automatically.</li>
     </ol>
@@ -1210,6 +1245,13 @@ const HELP_TOPICS = [
     <div class="warn"><b>Save once, at the end.</b> Don't save test or practice data on a real race night.</div>
     <h4>Showing the live view to parents</h4>
     <p>On Motos and Scoring there's a <b>Publish to live</b> button. Tap it whenever you want read-only devices (parents) to see the current check-ins, locked motos, and scores so far — e.g. after locking motos, and after each round. It's provisional and doesn't touch standings.</p>
+    <h4>Running two devices (handoff)</h4>
+    <p>Best practice: <b>one device is live at a time.</b> A typical night:</p>
+    <ol>
+      <li><b>Device A</b> checks riders in and builds motos, then taps <b>Publish to live</b>. When it asks <b>"Hand off to View?"</b>, tap Yes — Device A is now read-only.</li>
+      <li><b>Device B</b> (finish line) unlocks, taps <b>Yes</b> to <b>restore the race</b>, scores the rounds, and taps <b>Finish &amp; save race day</b>.</li>
+    </ol>
+    <p>If you unlock a second device while another is still running, the app warns you — running two at once can overwrite each other's work. Stick to one live device and the handoff above.</p>
     <p>This is handy for the <b>15-minute protest window</b>: publish the results, let everyone see them, then tap <b>Finish &amp; save race day</b> once the window closes. Saving finalizes the standings and clears the live view automatically.</p>
     <div class="tip"><b>Accidental reload?</b> In Run mode the app saves your progress in the background — motos when you lock them, check-ins and scores every 20 seconds. If the page reloads, re-enter the password and tap <b>Yes</b> when it asks to restore the race in progress. Tip: tap <b>Publish to live</b> after finishing a round so the latest scores are saved right away.</div>
   `},
