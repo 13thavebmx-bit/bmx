@@ -754,7 +754,7 @@ function renderMotos(){
       html+='<div class="mrow'+(sel?' sel':'')+'" data-m="'+mi+'" data-r="'+ri+'">'+
         '<span class="mplate '+plateClass(r)+'">'+esc(r.plate)+'</span>'+
         '<span class="mname">'+esc(r.first)+' '+esc(r.last)+
-          ' <span class="agebadge">'+r.age+'</span>'+
+          ' <span style="font-size:11.5px;font-weight:400;color:var(--muted)">age '+r.age+'</span>'+
           (r.bumped?' <span class="tag">bumped</span>':'')+
           (hint&&hint!==m.cat?' <span class="tag" style="background:var(--teal-tint);color:var(--teal)">last: '+esc(hint)+'</span>':'')+
         '</span>'+
