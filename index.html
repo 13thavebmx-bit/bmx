@@ -441,6 +441,7 @@ td.tot{font-weight:800;text-align:right}
 </div>
 
 <div class="bottombar" id="bottombar" style="display:none">
+  <button class="btn" id="bbPublish">Publish to live</button>
   <button class="btn" id="bbReset">Clear scores</button>
   <button class="btn primary" id="bbSave">Finish &amp; save race day</button>
 </div>
@@ -478,6 +479,7 @@ function nextCat(cat, sex){
 let RIDERS = [], SETTINGS = {points:{1:50,2:40,3:35,4:30,5:25,6:20,7:15,8:10},minMoto:2,maxMoto:8}, RACENIGHTS = [], HISTORY = {}, SEASONS=[];
 let MOTOS = [];
 let MOVE = null; // {motoIdx, riderIdx} when moving a rider
+let LIVE = null; // published live snapshot (read-only devices render this)
 
 /* ============================================================
    API helpers
@@ -526,13 +528,29 @@ async function refreshData(manual){
     const wasIn={}; RIDERS.forEach(r=>{ if(r.checkedIn) wasIn[r.riderId]=true; });
     RIDERS=(d.riders||[]).map(r=>Object.assign({},r,{checkedIn:!!wasIn[r.riderId]}));
     SETTINGS=d.settings||SETTINGS; RACENIGHTS=d.raceNights||[]; HISTORY=d.recentHistory||{};
+    LIVE = (d.live && d.live.live) ? d.live.live : null;
     setConn('live');
+    if(!runMode) applyLiveToView();   // read-only devices mirror the published day
     renderCheckin(); renderStats(); renderRoster();
+    if(!runMode){ renderMotos(); renderScoring(); }
     // Standings refresh only on an explicit manual request, never on the timer
     const onPoints=document.querySelector('.tab[data-tab="points"]').classList.contains('on');
     if(manual && onPoints) loadStandings();
     if(manual) toast('Updated','ok');
   }catch(e){ setConn('err'); if(manual) toast('Could not refresh','bad'); }
+}
+/* On read-only devices, mirror the published live snapshot into the
+   local view: check-in flags, motos, and any scoring entered so far. */
+function applyLiveToView(){
+  if(runMode) return;            // never override an official's working session
+  if(LIVE && LIVE.motos){
+    MOTOS = LIVE.motos.map(m=>({ cat:m.cat||'', locked:true, solo:(m.riders||[]).length<2,
+      riders:(m.riders||[]).map(r=>Object.assign({}, r, { finishes:(r.finishes||[null,null,null]).slice() })) }));
+  } else {
+    MOTOS = [];
+  }
+  const inSet = new Set((LIVE && LIVE.checkedIn) ? LIVE.checkedIn : []);
+  RIDERS.forEach(r=> r.checkedIn = inSet.has(r.riderId));
 }
 
 /* ============================================================
@@ -546,8 +564,10 @@ async function boot(){
     SETTINGS = d.settings||SETTINGS;
     RACENIGHTS = d.raceNights||[];
     HISTORY = d.recentHistory||{};
+    LIVE = (d.live && d.live.live) ? d.live.live : null;
     if(d.season){ document.getElementById('seasonLabel').textContent = d.season.year+' Season'; }
     setConn('live');
+    applyLiveToView();
     renderCheckin(); renderStats(); renderRoster();
     await loadSeasons();
     applyMode();          // default = view-only
@@ -575,7 +595,7 @@ document.querySelectorAll('.tab').forEach(t=>{
     t.classList.add('on');
     const tab=t.dataset.tab;
     document.getElementById('sec-'+tab).classList.add('on');
-    document.getElementById('bottombar').style.display = (runMode && tab==='scoring' && MOTOS.length) ? 'flex' : 'none';
+    updateBottomBar();
     if(tab==='motos') renderMotos();
     if(tab==='scoring') renderScoring();
     if(tab==='points') loadStandings();
@@ -697,6 +717,7 @@ function renderMotos(){
   const wrap=document.getElementById('motosWrap');
   if(!MOTOS.length){
     wrap.innerHTML='<div class="empty"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="14" width="18" height="5" rx="1"/></svg><p>No motos yet.<br>Check riders in, then tap “Build motos”.</p></div>';
+    updateBottomBar();
     return;
   }
   let html='';
@@ -742,13 +763,14 @@ function renderMotos(){
   });
   wrap.innerHTML=html;
 
-  wrap.querySelectorAll('[data-lock]').forEach(b=> b.addEventListener('click',e=>{e.stopPropagation();const i=+b.dataset.lock;MOTOS[i].locked=!MOTOS[i].locked;renderMotos();}));
+  wrap.querySelectorAll('[data-lock]').forEach(b=> b.addEventListener('click',e=>{e.stopPropagation();const i=+b.dataset.lock;MOTOS[i].locked=!MOTOS[i].locked;renderMotos(); if(MOTOS[i] && MOTOS[i].locked) publishNow();}));
   wrap.querySelectorAll('.mv').forEach(b=> b.addEventListener('click',e=>{
     e.stopPropagation();
     MOVE={motoIdx:+b.dataset.mvfrom, riderIdx:+b.dataset.mvr};
     renderMotos();
   }));
   wrap.querySelectorAll('.move-chip').forEach(c=> c.addEventListener('click',()=> doMove(c.dataset.dest)));
+  updateBottomBar();
 }
 function doMove(dest){
   if(!MOVE){ return; }
@@ -807,7 +829,7 @@ function motoPlacings(m){
 function renderScoring(){
   const wrap=document.getElementById('scoringWrap');
   const sel=document.getElementById('roundSel');
-  document.getElementById('bottombar').style.display = (runMode && MOTOS.length)? 'flex':'none';
+  updateBottomBar();
   if(!MOTOS.length){
     sel.style.display='none';
     wrap.innerHTML='<div class="empty"><svg viewBox="0 0 24 24"><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/><path d="M4 22h16"/></svg><p>Build motos first, then score them here.</p></div>';
@@ -870,6 +892,46 @@ function ordinal(n){ const s=['th','st','nd','rd'], v=n%100; return n+(s[(v-20)%
 
 document.getElementById('bbReset').addEventListener('click', ()=>{ MOTOS.forEach(m=>m.riders.forEach(r=>r.finishes=[null,null,null])); renderScoring(); });
 document.getElementById('bbSave').addEventListener('click', saveRace);
+document.getElementById('bbPublish').addEventListener('click', ()=> publishToLive(true));
+
+/* Auto-publish model:
+   - A steady 20s timer publishes in the background (covers check-ins and
+     acts as a scoring safety-net) so a reload loses at most ~20s.
+   - Motos publish immediately when a moto is locked.
+   - Scoring also has the manual "Publish to live" button.
+   Only runs in Run mode, only when there's something to share. */
+let autoPubTimer=null;
+function startAutoPublish(){
+  if(autoPubTimer) clearInterval(autoPubTimer);
+  autoPubTimer=setInterval(()=>{
+    if(runMode && (MOTOS.length || RIDERS.some(r=>r.checkedIn))) publishToLive(false);
+  }, 20000);
+}
+function publishNow(){ if(runMode) publishToLive(false); }
+
+/* Push the current day's check-ins + locked motos + scoring so read-only
+   devices can see them. Provisional — does not touch standings. */
+async function publishToLive(manual){
+  if(!runMode){ return; }
+  const checkedIn = RIDERS.filter(r=>r.checkedIn).map(r=>r.riderId);
+  const motos = MOTOS.map(m=>({
+    cat: m.cat||'',
+    riders: m.riders.map(r=>({
+      riderId:r.riderId, first:r.first, last:r.last, plate:r.plate,
+      cls:r.cls, sex:r.sex, age:r.age, category:r.category, cruiser:!!r.cruiser,
+      bumped:!!r.bumped, finishes:(r.finishes||[null,null,null]).slice()
+    }))
+  }));
+  const btn=document.getElementById('bbPublish'); const orig=btn.textContent;
+  if(manual){ btn.disabled=true; btn.textContent='Publishing…'; }
+  try{
+    await apiPost('publishLive', { live:{ checkedIn, motos, publishedAt:new Date().toISOString() } });
+    LIVE = { checkedIn, motos };
+    if(manual) toast('Published to live ✓','ok');
+    else { const t=document.getElementById('connTxt'); if(t){ const o=t.textContent; t.textContent='saved ✓'; setTimeout(()=>{ if(t.textContent==='saved ✓') t.textContent=o; },1500); } }
+  }catch(e){ if(manual) toast('Publish failed: '+e.message,'bad'); }
+  finally{ if(manual){ btn.disabled=false; btn.textContent=orig; } }
+}
 
 async function saveRace(){
   if(!MOTOS.length){ toast('Nothing to save yet','bad'); return; }
@@ -899,6 +961,8 @@ async function saveRace(){
     await apiPost('saveMotoHistory', {raceNightId:rnId, entries:history});
     await apiPost('saveResults', {raceNightId:rnId, results});
     await apiPost('setRaceNightStatus', {raceNightId:rnId, status:'Scored'});
+    try{ await apiPost('clearLive', {}); }catch(e){}   // wipe the temporary live view
+    LIVE=null;
     toast(raceNumber+' saved ✓','ok');
     const d=await apiGet('bootstrap');
     RACENIGHTS=d.raceNights||[]; HISTORY=d.recentHistory||{};
@@ -968,15 +1032,49 @@ function applyMode(){
   // admin gate mirrors run mode
   document.getElementById('adminGate').style.display = runMode ? 'none' : 'block';
   document.getElementById('adminBody').style.display = runMode ? 'block' : 'none';
-  // bottom save bar only in run mode + scoring tab with motos
-  const onScoring=document.querySelector('.tab[data-tab="scoring"]').classList.contains('on');
-  document.getElementById('bottombar').style.display = (runMode && onScoring && MOTOS.length)?'flex':'none';
+  updateBottomBar();
+}
+/* Bottom bar: Publish shows on Motos+Scoring in Run mode; Clear/Save only on Scoring. */
+function updateBottomBar(){
+  const bar=document.getElementById('bottombar');
+  const activeTab=(document.querySelector('.tab.on')||{}).dataset?document.querySelector('.tab.on').dataset.tab:'';
+  const onMotos=activeTab==='motos', onScoring=activeTab==='scoring';
+  const show = runMode && MOTOS.length && (onMotos || onScoring);
+  bar.style.display = show ? 'flex' : 'none';
+  document.getElementById('bbPublish').style.display = show ? 'inline-flex' : 'none';
+  document.getElementById('bbReset').style.display = (show && onScoring) ? 'inline-flex' : 'none';
+  document.getElementById('bbSave').style.display = (show && onScoring) ? 'inline-flex' : 'none';
 }
 function enterRunMode(){
   runMode=true; applyMode(); toast('Run mode — this device can make changes','ok');
+  startAutoPublish();
+  offerRestore();
+}
+/* After unlocking, if the backend holds a published race in progress and
+   this device hasn't built anything yet, offer to restore it. */
+function offerRestore(){
+  if(!LIVE || !((LIVE.checkedIn&&LIVE.checkedIn.length) || (LIVE.motos&&LIVE.motos.length))) return;
+  if(MOTOS.length) return;   // already have a working session, don't clobber
+  setTimeout(()=>{
+    if(confirm('Restore the race in progress?\n\nThis device will reload the published check-ins, motos and scoring.')){
+      restoreFromLive();
+    }
+  }, 150);
+}
+function restoreFromLive(){
+  if(!LIVE) return;
+  if(LIVE.motos){
+    MOTOS = LIVE.motos.map(m=>({ cat:m.cat||'', locked:true, solo:(m.riders||[]).length<2,
+      riders:(m.riders||[]).map(r=>Object.assign({}, r, { finishes:(r.finishes||[null,null,null]).slice() })) }));
+  }
+  const inSet=new Set(LIVE.checkedIn||[]);
+  RIDERS.forEach(r=> r.checkedIn = inSet.has(r.riderId));
+  renderStats(); renderCheckin(); renderMotos(); renderScoring();
+  toast('Race restored ✓','ok');
 }
 function exitRunMode(){
   runMode=false; applyMode(); toast('Back to view-only','ok');
+  if(autoPubTimer){ clearInterval(autoPubTimer); autoPubTimer=null; }
 }
 // header chip: tap to lock back to view, or open unlock prompt
 document.getElementById('modeBtn').addEventListener('click', ()=>{
@@ -1084,6 +1182,10 @@ const HELP_TOPICS = [
       <li>Results write to the Sheet and the Points standings update.</li>
     </ol>
     <div class="warn"><b>Save once, at the end.</b> Don't save test or practice data on a real race night.</div>
+    <h4>Showing the live view to parents</h4>
+    <p>On Motos and Scoring there's a <b>Publish to live</b> button. Tap it whenever you want read-only devices (parents) to see the current check-ins, locked motos, and scores so far — e.g. after locking motos, and after each round. It's provisional and doesn't touch standings.</p>
+    <p>This is handy for the <b>15-minute protest window</b>: publish the results, let everyone see them, then tap <b>Finish &amp; save race day</b> once the window closes. Saving finalizes the standings and clears the live view automatically.</p>
+    <div class="tip"><b>Accidental reload?</b> In Run mode the app saves your progress in the background — motos when you lock them, check-ins and scores every 20 seconds. If the page reloads, re-enter the password and tap <b>Yes</b> when it asks to restore the race in progress. Tip: tap <b>Publish to live</b> after finishing a round so the latest scores are saved right away.</div>
   `},
   { icon:'\u{1F4CB}', title:'Managing riders, plates & classes', html:`
     <h4>Add a rider</h4>
