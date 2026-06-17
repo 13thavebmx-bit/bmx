@@ -1037,9 +1037,10 @@ function applyMode(){
 /* Bottom bar: Publish shows on Motos+Scoring in Run mode; Clear/Save only on Scoring. */
 function updateBottomBar(){
   const bar=document.getElementById('bottombar');
-  const activeTab=(document.querySelector('.tab.on')||{}).dataset?document.querySelector('.tab.on').dataset.tab:'';
+  const onEl=document.querySelector('.tab.on');
+  const activeTab = onEl ? onEl.dataset.tab : '';
   const onMotos=activeTab==='motos', onScoring=activeTab==='scoring';
-  const show = runMode && MOTOS.length && (onMotos || onScoring);
+  const show = runMode && MOTOS.length>0 && (onMotos || onScoring);
   bar.style.display = show ? 'flex' : 'none';
   document.getElementById('bbPublish').style.display = show ? 'inline-flex' : 'none';
   document.getElementById('bbReset').style.display = (show && onScoring) ? 'inline-flex' : 'none';
