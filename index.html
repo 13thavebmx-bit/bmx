@@ -435,6 +435,12 @@ td.tot{font-weight:800;text-align:right}
       <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Tap a topic to expand. Everything you need to run, manage, and maintain the app.</p>
       <div id="helpAccordion"></div>
     </div>
+
+    <div class="card" style="border-color:#F3C9C6">
+      <h3 style="color:var(--bad)">Reset race day</h3>
+      <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Clears the current day's check-ins, motos and scoring from this device <b>and</b> the live view, so you can start fresh. Your saved race results and season standings are <b>not</b> affected.</p>
+      <button class="btn red" id="resetDayBtn" style="width:100%;justify-content:center">Clear today's check-ins, motos &amp; scoring</button>
+    </div>
     </div>
   </section>
 
@@ -1102,6 +1108,25 @@ document.getElementById('adminUnlock').addEventListener('click', tryUnlock);
 document.getElementById('adminPass').addEventListener('keydown', e=>{ if(e.key==='Enter') tryUnlock(); });
 
 document.getElementById('addRiderBtn').addEventListener('click', addRider);
+
+/* Reset race day — wipe this device's working session AND the published
+   live snapshot, so officials can start fresh. Never touches saved
+   season results / standings in the Sheet. */
+document.getElementById('resetDayBtn').addEventListener('click', resetRaceDay);
+async function resetRaceDay(){
+  if(!confirm('Clear today\u2019s check-ins, motos and scoring?\n\nThis resets this device and the live view so you can start fresh.\nYour saved race results and standings are NOT affected.')) return;
+  const btn=document.getElementById('resetDayBtn'); btn.disabled=true; btn.textContent='Clearing…';
+  try{
+    try{ await apiPost('clearLive', {}); }catch(e){}   // wipe the shared live snapshot
+    LIVE=null;
+    MOTOS=[]; MOVE=null; CUR_ROUND=0;
+    RIDERS.forEach(r=> r.checkedIn=false);
+    document.querySelectorAll('#roundSel .rbtn').forEach((x,i)=>x.classList.toggle('on',i===0));
+    renderStats(); renderCheckin(); renderMotos(); renderScoring(); updateBottomBar();
+    toast('Race day cleared — fresh start','ok');
+  }catch(e){ toast('Could not fully clear: '+e.message,'bad'); }
+  finally{ btn.disabled=false; btn.textContent="Clear today's check-ins, motos & scoring"; }
+}
 async function addRider(){
   const first=val('aFirst'), last=val('aLast'), birth=val('aBirth'), sex=val('aSex'), cls=val('aClass'), plate=val('aPlate');
   const cruiser=document.getElementById('aCruiser').checked;
@@ -1255,6 +1280,8 @@ const HELP_TOPICS = [
     <h4>A plate lost its leading zero</h4>
     <p>Re-enter it in the app (tap the plate badge) — it writes back as text. The Sheet's Plate column should be formatted as plain text.</p>
     <div class="tip">Parents can't break anything — without the password every device is read-only.</div>
+    <h4>Start the day over</h4>
+    <p>Admin tab → <b>Reset race day</b> clears the current check-ins, motos and scoring from this device and the live view, so you can start fresh. It does <b>not</b> touch saved race results or standings.</p>
   `},
 ];
 let helpBuilt=false;
