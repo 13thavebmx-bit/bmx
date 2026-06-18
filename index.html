@@ -299,9 +299,10 @@ td.tot{font-weight:800;text-align:right}
 .bottombar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);
   padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;justify-content:center;gap:10px;z-index:35;max-width:760px;margin:0 auto}
 .bottombar .btn{flex:1;justify-content:center}
-#bbPublish{flex:0 0 50%;background:var(--teal);border-color:var(--teal);color:#fff;font-size:15px;font-weight:700}
+#bbPublish{background:var(--teal);border-color:var(--teal);color:#fff;font-size:15px;font-weight:700}
 #bbPublish:active{background:var(--teal-dark)}
-@media(min-width:760px){.bottombar{left:50%;transform:translateX(-50%);border-radius:14px 14px 0 0;border-left:1px solid var(--line);border-right:1px solid var(--line)}}
+.bottombar.solo #bbPublish{flex:0 0 50%}
+@media(min-width:760px){.bottombar{border-radius:14px 14px 0 0;border-left:1px solid var(--line);border-right:1px solid var(--line)}}
 </style>
 </head>
 <body>
@@ -1071,6 +1072,7 @@ function updateBottomBar(){
   const onMotos=activeTab==='motos', onScoring=activeTab==='scoring';
   const show = runMode && MOTOS.length>0 && (onMotos || onScoring);
   bar.style.display = show ? 'flex' : 'none';
+  bar.classList.toggle('solo', show && !onScoring);
   document.getElementById('bbPublish').style.display = show ? 'inline-flex' : 'none';
   document.getElementById('bbReset').style.display = (show && onScoring) ? 'inline-flex' : 'none';
   document.getElementById('bbSave').style.display = (show && onScoring) ? 'inline-flex' : 'none';
