@@ -277,6 +277,15 @@ function convert(rows){
   const idx = {};
   headers.forEach((h,i)=>{ idx[h] = i; });
 
+  // CCNBIKES exports sometimes label this column with extra hint text,
+  // e.g. "UCI License ID: (11 digit number) No Spaces". Match by prefix
+  // so minor header wording changes don't break the import. There's also
+  // a separate "UCI ID" column earlier in the export that must NOT match.
+  if(!("UCI License ID" in idx)){
+    const uciIdx = headers.findIndex(h => /^UCI License ID\b/i.test(h));
+    if(uciIdx !== -1) idx["UCI License ID"] = uciIdx;
+  }
+
   const missing = REQUIRED_SOURCE_COLS.filter(c => !(c in idx));
   if(missing.length){
     throw new Error("This doesn't look like a CCNBIKES export. Missing columns: " + missing.join(", "));
@@ -291,7 +300,7 @@ function convert(rows){
   for(let i=1;i<rows.length;i++){
     const row = rows[i];
     if(!row || row.every(c => (c||"").trim()==="")) continue; // skip blank lines
-    let lic = get(row,"UCI License ID");
+    let lic = get(row,"UCI License ID").replace(/\s+/g,"");
     const key = lic !== "" ? "L:"+lic : "BLANK:"+(blankSeq++);
     if(!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
@@ -316,7 +325,7 @@ function convert(rows){
 
     const rec = {};
     SQORZ_COLS.forEach(c => rec[c] = "");
-    rec["License Number"] = get(r0,"UCI License ID");
+    rec["License Number"] = get(r0,"UCI License ID").replace(/\s+/g,"");
     rec["Family Name"]    = family;
     rec["Given Name"]     = given;
     rec["Birth Date"]     = get(r0,"DOB");                 // kept MM/DD/YYYY, matches working file
