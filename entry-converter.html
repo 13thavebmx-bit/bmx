@@ -326,6 +326,16 @@ function convert(rows){
   for(let i=1;i<rows.length;i++){
     const row = rows[i];
     if(!row || row.every(c => (c||"").trim()==="")) continue; // skip blank lines
+    // Skip CCNBIKES export footer/metadata rows. CCNBIKES appends lines like
+    // "Filters", "event: ...", "statuses: ['complete']" and a "generated at"
+    // stamp to the bottom of the export. These carry text only in non-rider
+    // columns (e.g. "UCI ID"), so they slip past the blank-line check and each
+    // becomes a phantom rider. A real registration always has at least a rider
+    // name or a license number; if all three identity fields are blank, drop it.
+    const hasIdentity = get(row,"UCI License ID")    !== "" ||
+                        get(row,"First Name (Rider)") !== "" ||
+                        get(row,"Last Name (Rider)")  !== "";
+    if(!hasIdentity) continue;
     let lic = get(row,"UCI License ID").replace(/\s+/g,"");
     const key = lic !== "" ? "L:"+lic : "BLANK:"+(blankSeq++);
     if(!groups.has(key)) groups.set(key, []);
