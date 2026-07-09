@@ -336,7 +336,7 @@ function convert(rows){
                         get(row,"First Name (Rider)") !== "" ||
                         get(row,"Last Name (Rider)")  !== "";
     if(!hasIdentity) continue;
-    let lic = get(row,"UCI License ID").replace(/\s+/g,"");
+    let lic = get(row,"UCI License ID").replace(/\s+/g,"").toUpperCase();
     const key = lic !== "" ? "L:"+lic : "BLANK:"+(blankSeq++);
     if(!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
@@ -361,7 +361,7 @@ function convert(rows){
 
     const rec = {};
     SQORZ_COLS.forEach(c => rec[c] = "");
-    rec["License Number"] = get(r0,"UCI License ID").replace(/\s+/g,"");
+    rec["License Number"] = get(r0,"UCI License ID").replace(/\s+/g,"").toUpperCase();
     rec["Family Name"]    = family;
     rec["Given Name"]     = given;
     rec["Birth Date"]     = normalizeDOB(get(r0,"DOB"));   // MM/DD/YYYY -> YYYY-MM-DD for Sqorz
