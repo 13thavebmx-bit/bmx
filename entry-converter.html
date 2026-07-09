@@ -269,6 +269,32 @@ function toCSV(matrix){
   return matrix.map(r => r.map(esc).join(",")).join("\r\n") + "\r\n";
 }
 
+// ---- Date normalization ----
+// Sqorz wants Birth Date as YYYY-MM-DD. CCNBIKES exports DOB as MM/DD/YYYY.
+// Convert reliably, leave anything unrecognizable untouched so we never
+// silently corrupt a value we don't understand.
+function normalizeDOB(raw){
+  const s = (raw || "").trim();
+  if(!s) return "";
+
+  // Already ISO (YYYY-MM-DD or YYYY/MM/DD) — normalize separators, zero-pad.
+  let m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if(m){
+    const [, y, mo, d] = m;
+    return `${y}-${mo.padStart(2,"0")}-${d.padStart(2,"0")}`;
+  }
+
+  // MM/DD/YYYY or MM-DD-YYYY (the CCNBIKES format).
+  m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(m){
+    const [, mo, d, y] = m;
+    return `${y}-${mo.padStart(2,"0")}-${d.padStart(2,"0")}`;
+  }
+
+  // Unrecognized — hand it back as-is rather than guessing.
+  return s;
+}
+
 // ---- Core conversion ----
 function convert(rows){
   if(rows.length < 2) throw new Error("File looks empty — no rider rows found.");
@@ -328,7 +354,7 @@ function convert(rows){
     rec["License Number"] = get(r0,"UCI License ID").replace(/\s+/g,"");
     rec["Family Name"]    = family;
     rec["Given Name"]     = given;
-    rec["Birth Date"]     = get(r0,"DOB");                 // kept MM/DD/YYYY, matches working file
+    rec["Birth Date"]     = normalizeDOB(get(r0,"DOB"));   // MM/DD/YYYY -> YYYY-MM-DD for Sqorz
     rec["Gender"]         = get(r0,"Gender").toUpperCase();
     rec["Plate"]          = get(r0,"Plate Number");
     rec["Club Name"]      = get(r0,"Club Affiliation");
