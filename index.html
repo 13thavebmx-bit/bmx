@@ -56,6 +56,8 @@ body{font-family:var(--font);background:#F4F6F7;color:var(--ink);font-size:15px;
 .mode-chip.view::before{background:#CDEFF6}
 .mode-chip.run{background:#fff;color:var(--teal)}
 .mode-chip.run::before{background:#1FA84A;box-shadow:0 0 0 3px rgba(31,168,74,.3)}
+.mode-chip.test{background:#fff;color:var(--warn)}
+.mode-chip.test::before{background:#EF9F27;box-shadow:0 0 0 3px rgba(239,159,39,.3)}
 
 /* Read-only (View mode): disable interactive controls */
 body.viewmode .row,
@@ -110,6 +112,8 @@ body.viewmode .viewnote{display:block}
 .btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}
 .btn.primary:active{background:var(--teal-dark)}
 .btn.red{background:var(--red);border-color:var(--red);color:#fff}
+.btn.orange{background:#E8730C;border-color:#E8730C;color:#fff}
+.btn.orange:active{background:#C85F08}
 .btn.sm{padding:6px 11px;font-size:13px}
 .btn.ghost{background:transparent}
 .btn:disabled{opacity:.5;cursor:not-allowed}
@@ -372,6 +376,8 @@ td.tot{font-weight:800;text-align:right}
     </button>
   </nav>
 
+  <div id="testBanner" style="display:none;background:var(--warn-tint);color:var(--warn);text-align:center;font-size:12px;font-weight:800;letter-spacing:.03em;padding:7px 12px;border-bottom:1px solid #F0C75A">TRAINING MODE — practice only · nothing is saved or published</div>
+
   <!-- CHECK-IN -->
   <section class="sec on" id="sec-checkin">
     <div class="viewnote">View only — tap “View” in the top corner and enter the password to make changes.</div>
@@ -447,6 +453,15 @@ td.tot{font-weight:800;text-align:right}
       <button class="btn primary" id="adminUnlock" style="width:100%;justify-content:center">Unlock this device</button>
     </div>
 
+    <div id="trainGate" class="card" style="text-align:center;display:none">
+      <div style="width:46px;height:46px;border-radius:50%;background:var(--warn-tint);display:flex;align-items:center;justify-content:center;margin:6px auto 12px">
+        <svg viewBox="0 0 24 24" style="width:24px;height:24px;stroke:var(--warn);fill:none;stroke-width:2"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/></svg>
+      </div>
+      <h3 style="margin-bottom:4px">Training mode</h3>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Practice or teach the app on this device. Nothing is saved to the Sheet or shown to parents — it all clears when you exit. Enter the training PIN to start.</p>
+      <button class="btn orange" id="trainBtn" style="width:100%;justify-content:center">Start training mode</button>
+    </div>
+
     <div id="adminBody" style="display:none">
     <div class="card">
       <h3>Add a rider</h3>
@@ -509,7 +524,9 @@ td.tot{font-weight:800;text-align:right}
 const API = 'https://script.google.com/macros/s/AKfycbw-4vrobbYcy22X32n58hUoxKRQUK7eYuGtFoLRDnKlKyjJELTR_Ukg6qi-HKGrCCGQQA/exec';
 
 const RUN_PASSWORD = 'TwentyInch';
+const TRAIN_PASSWORD = '1313';   // <-- training PIN. Entering it starts a local practice session (nothing saves or publishes).
 let runMode = false;            // false = View (read-only), true = Run (interactive)
+let testMode = false;           // true = Training/practice session: interactive, but no Sheet writes and no live publishing
 
 /* ---- Category ordering (mirrors the SCA Challenge brackets) ---- */
 const MALE_CATS = [];
@@ -549,6 +566,7 @@ async function apiGet(action, params={}){
   return j.data;
 }
 async function apiPost(action, payload={}){
+  if(testMode) return {};   // Training mode: never write to the backend. All writes funnel through here, so a practice session can't touch the Sheet or the shared live view. Local UI edits still update on-screen for training, but revert on exit.
   const r = await fetch(API, {
     method:'POST',
     body: JSON.stringify(Object.assign({action}, payload)),
@@ -1088,6 +1106,7 @@ function publishNow(){ if(runMode) publishToLive(false); }
    devices can see them. Provisional — does not touch standings. */
 async function publishToLive(manual){
   if(!runMode){ return; }
+  if(testMode){ if(manual) toast('Training mode — nothing is published','ok'); return; }   // never touch the shared live view in a practice session
   const checkedIn = RIDERS.filter(r=>r.checkedIn).map(r=>r.riderId);
   const motos = MOTOS.map(m=>({
     cat: m.cat||'',
@@ -1113,6 +1132,7 @@ async function publishToLive(manual){
 }
 
 async function saveRace(){
+  if(testMode){ toast('Training mode — save is disabled','bad'); return; }   // never write practice data to the Sheet
   if(!MOTOS.length){ toast('Nothing to save yet','bad'); return; }
   const incomplete = MOTOS.map((m,i)=> motoComplete(m)?null:(i+1)).filter(x=>x);
   if(incomplete.length){
@@ -1206,11 +1226,14 @@ async function loadStandings(){
 function applyMode(){
   document.body.classList.toggle('viewmode', !runMode);
   const chip=document.getElementById('modeBtn');
-  chip.className='mode-chip '+(runMode?'run':'view');
-  chip.textContent = runMode?'Run':'View';
-  // admin gate mirrors run mode
-  document.getElementById('adminGate').style.display = runMode ? 'none' : 'block';
-  document.getElementById('adminBody').style.display = runMode ? 'block' : 'none';
+  chip.className='mode-chip '+(testMode?'test':runMode?'run':'view');
+  chip.textContent = testMode?'Test':runMode?'Run':'View';
+  // Admin (rider/roster/season edits, reset) stays locked in Training mode — those write to the backend.
+  const adminOpen = runMode && !testMode;
+  document.getElementById('adminGate').style.display = adminOpen ? 'none' : 'block';
+  document.getElementById('adminBody').style.display = adminOpen ? 'block' : 'none';
+  const banner=document.getElementById('testBanner'); if(banner) banner.style.display = testMode ? 'block' : 'none';
+  const trainGate=document.getElementById('trainGate'); if(trainGate) trainGate.style.display = (!runMode && !testMode) ? 'block' : 'none';
   updateBottomBar();
 }
 /* Bottom bar: Publish shows on Motos+Scoring in Run mode; Clear/Save only on Scoring. */
@@ -1224,7 +1247,13 @@ function updateBottomBar(){
   bar.classList.toggle('solo', show && !onScoring);
   document.getElementById('bbPublish').style.display = show ? 'inline-flex' : 'none';
   document.getElementById('bbReset').style.display = (show && onScoring) ? 'inline-flex' : 'none';
-  document.getElementById('bbSave').style.display = (show && onScoring) ? 'inline-flex' : 'none';
+  const save=document.getElementById('bbSave');
+  save.style.display = (show && onScoring) ? 'inline-flex' : 'none';
+  // In Training mode the save is off, so nothing can reach the Sheet.
+  save.disabled = testMode;
+  save.style.opacity = testMode ? '.45' : '';
+  save.style.pointerEvents = testMode ? 'none' : '';
+  save.title = testMode ? 'Disabled in Training mode' : '';
 }
 function enterRunMode(){
   // Warn if another device appears to be actively running (published recently, not us)
@@ -1271,9 +1300,44 @@ function exitRunMode(){
   runMode=false; applyMode(); toast('Back to view-only','ok');
   if(autoPubTimer){ clearInterval(autoPubTimer); autoPubTimer=null; }
 }
-// header chip: tap to lock back to view, or open unlock prompt
+/* Training mode: a fully local practice session. Interactive like Run mode,
+   but it never writes to the Sheet and never publishes to the shared live
+   view. Starts from a clean slate; exiting wipes the practice data with no
+   confirmation and returns to the real live view. */
+function enterTestMode(){
+  testMode=true; runMode=true;
+  MOTOS=[]; MOVE=null; CUR_ROUND=0;                       // clean slate to train from check-in
+  RIDERS.forEach(r=> r.checkedIn=false);
+  document.querySelectorAll('#roundSel .rbtn').forEach((x,i)=>x.classList.toggle('on',i===0));
+  applyMode();
+  renderStats(); renderCheckin(); renderMotos(); renderGates(); renderScoring(); updateBottomBar();
+  toast('Training mode — practice only, nothing is saved','ok');
+  // deliberately no auto-publish and no restore prompt
+}
+function exitTestMode(){
+  testMode=false; runMode=false;
+  MOVE=null; CUR_ROUND=0;
+  document.querySelectorAll('#roundSel .rbtn').forEach((x,i)=>x.classList.toggle('on',i===0));
+  applyMode();
+  applyLiveToView();                                       // instant: clears practice motos + check-ins, restores the real live view
+  renderStats(); renderCheckin(); renderMotos(); renderGates(); renderScoring(); updateBottomBar();
+  toast('Training ended — practice data cleared','ok');
+  refreshRosterFromBackend_();                             // revert any practice plate/class edits to their real values
+}
+/* Pull a fresh roster so local-only practice edits (plate/class) revert. */
+async function refreshRosterFromBackend_(){
+  try{
+    const d=await apiGet('bootstrap');
+    LIVE=(d.live&&d.live.live)?d.live.live:LIVE;
+    RIDERS=(d.riders||[]).map(r=>Object.assign({}, r, {checkedIn:false}));
+    applyLiveToView();
+    renderStats(); renderCheckin(); renderRoster(); renderMotos(); renderGates(); renderScoring();
+  }catch(e){ /* offline — the periodic refresh will catch up */ }
+}
+// header chip: exit training, or lock back to view, or open unlock prompt
 document.getElementById('modeBtn').addEventListener('click', ()=>{
-  if(runMode){ exitRunMode(); }
+  if(testMode){ exitTestMode(); }
+  else if(runMode){ exitRunMode(); }
   else { promptUnlock(); }
 });
 function promptUnlock(){
@@ -1281,6 +1345,13 @@ function promptUnlock(){
   if(v===null) return;
   if(v===RUN_PASSWORD){ enterRunMode(); }
   else { toast('Incorrect password','bad'); }
+}
+/* Training mode is started from its own button on the Admin tab (view mode). */
+function promptTrain(){
+  const v=prompt('Enter the training PIN to start a practice session:');
+  if(v===null) return;
+  if(v===TRAIN_PASSWORD){ enterTestMode(); }
+  else { toast('Incorrect PIN','bad'); }
 }
 function showAdmin(){
   if(!runMode){ setTimeout(()=>{ const p=document.getElementById('adminPass'); if(p) p.focus(); }, 50); }
@@ -1293,6 +1364,7 @@ function tryUnlock(){
   else { toast('Incorrect password','bad'); document.getElementById('adminPass').focus(); }
 }
 document.getElementById('adminUnlock').addEventListener('click', tryUnlock);
+document.getElementById('trainBtn').addEventListener('click', promptTrain);
 document.getElementById('adminPass').addEventListener('keydown', e=>{ if(e.key==='Enter') tryUnlock(); });
 
 document.getElementById('addRiderBtn').addEventListener('click', addRider);
@@ -1370,6 +1442,7 @@ const HELP_TOPICS = [
       <li>Open the app and <b>unlock this device</b>: tap the <b>View</b> chip top-right, enter the password. It turns green and reads <b>Run</b>.</li>
       <li>Only devices that make changes (check-in, staging, finish line) need the password. Everyone else stays in View mode (read-only).</li>
     </ol>
+    <div class="tip"><b>Training mode:</b> on the <b>Admin</b> tab (view mode), tap <b>Start training mode</b> and enter the <b>training PIN</b> to begin a practice session on this device only (amber <b>Test</b> chip). Everything works for teaching the flow, but <b>Finish &amp; save is disabled</b> and nothing writes to the Sheet or publishes to parents. Tap the <b>Test</b> chip to exit — practice data clears automatically, no prompt. Closing or reloading the page ends it too.</div>
     <h4>1. Check riders in</h4>
     <ul>
       <li>Check-in tab: tap a rider to check in (row turns green), tap again to undo.</li>
