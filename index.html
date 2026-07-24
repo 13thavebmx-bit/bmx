@@ -70,6 +70,8 @@ body.viewmode .edit-plate::after{display:none}
 body.viewmode .row .chk{opacity:.35}
 body.viewmode #buildMotos,
 body.viewmode #resetMotos,
+body.viewmode #drawGates,
+body.viewmode #redrawGates,
 body.viewmode .bottombar,
 body.viewmode [data-clr],
 body.viewmode .mv{display:none !important}
@@ -199,6 +201,25 @@ body.viewmode .viewnote{display:block}
 .move-chip{font-size:12px;font-weight:600;padding:6px 11px;border-radius:6px;border:1px solid var(--teal);
   background:#fff;color:var(--teal);cursor:pointer}
 .move-chip:active{background:var(--teal);color:#fff}
+
+/* Gates */
+.gaterow{display:grid;grid-template-columns:1fr 44px 44px 44px;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--line-soft)}
+.gaterow:last-child{border-bottom:none}
+.gaterow.ghead{padding:7px 12px;background:#FAFBFC}
+.gaterow.ghead span{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;text-align:center}
+.gaterow.ghead .glbl{text-align:left}
+.grname{display:flex;align-items:center;gap:8px;min-width:0}
+.grname .nm{font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gate{width:38px;height:38px;margin:0 auto;border-radius:9px;background:var(--teal-tint);color:var(--teal);
+  border:1.5px solid #BfE6EF;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;
+  font-variant-numeric:tabular-nums}
+
+/* Inline gates on the Motos page (shown once a draw exists) */
+.motogate-h{display:flex;justify-content:flex-end;gap:6px;padding:5px 12px;background:#FAFBFC;border-bottom:1px solid var(--line-soft)}
+.motogate-h .mgl{width:30px;text-align:center;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.03em}
+.mgates{display:flex;gap:6px;flex-shrink:0}
+.mg{width:30px;height:30px;border-radius:7px;background:var(--teal-tint);color:var(--teal);border:1.5px solid #BfE6EF;
+  display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
 
 /* Scoring */
 .pos{width:30px;height:30px;border-radius:50%;border:2px solid #CBD5D8;display:flex;align-items:center;
@@ -333,6 +354,10 @@ td.tot{font-weight:800;text-align:right}
       <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><rect x="3" y="14" width="18" height="5" rx="1"/></svg>
       <span>Motos</span>
     </button>
+    <button class="tab" data-tab="gates">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="4" height="14" rx="1"/><rect x="10" y="5" width="4" height="14" rx="1"/><rect x="17" y="5" width="4" height="14" rx="1"/></svg>
+      <span>Staging</span>
+    </button>
     <button class="tab" data-tab="scoring">
       <svg viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
       <span>Scoring</span>
@@ -370,10 +395,21 @@ td.tot{font-weight:800;text-align:right}
       <div><h2>Moto groups</h2><div class="sub" id="motoSub">Check riders in, then build</div></div>
       <div style="display:flex;gap:6px">
         <button class="btn sm" id="resetMotos">Reset</button>
+        <button class="btn sm" id="drawGates">Draw gates</button>
         <button class="btn sm primary" id="buildMotos">Build motos</button>
       </div>
     </div>
     <div id="motosWrap"></div>
+  </section>
+
+  <!-- GATES -->
+  <section class="sec" id="sec-gates">
+    <div class="viewnote">View only — gate assignments update live during the race.</div>
+    <div class="sec-head">
+      <div><h2>Gate assignments</h2><div class="sub" id="gatesSub">Build motos, then draw gates</div></div>
+      <button class="btn sm" id="redrawGates">Draw gates</button>
+    </div>
+    <div id="gatesWrap"></div>
   </section>
 
   <!-- SCORING -->
@@ -552,7 +588,7 @@ async function refreshData(manual){
     setConn('live');
     if(!runMode) applyLiveToView();   // read-only devices mirror the published day
     renderCheckin(); renderStats(); renderRoster();
-    if(!runMode){ renderMotos(); renderScoring(); }
+    if(!runMode){ renderMotos(); renderGates(); renderScoring(); }
     // Standings refresh only on an explicit manual request, never on the timer
     const onPoints=document.querySelector('.tab[data-tab="points"]').classList.contains('on');
     if(manual && onPoints) loadStandings();
@@ -565,7 +601,7 @@ function applyLiveToView(){
   if(runMode) return;            // never override an official's working session
   if(LIVE && LIVE.motos){
     MOTOS = LIVE.motos.map(m=>({ cat:m.cat||'', locked:true, solo:(m.riders||[]).length<2,
-      riders:(m.riders||[]).map(r=>Object.assign({}, r, { finishes:(r.finishes||[null,null,null]).slice() })) }));
+      riders:(m.riders||[]).map(r=>Object.assign({}, r, { finishes:(r.finishes||[null,null,null]).slice(), gates:(r.gates||[null,null,null]).slice() })) }));
   } else {
     MOTOS = [];
   }
@@ -618,6 +654,7 @@ document.querySelectorAll('.tab').forEach(t=>{
     document.getElementById('sec-'+tab).classList.add('on');
     updateBottomBar();
     if(tab==='motos') renderMotos();
+    if(tab==='gates') renderGates();
     if(tab==='scoring') renderScoring();
     if(tab==='points') loadStandings();
     if(tab==='admin') showAdmin();
@@ -723,7 +760,7 @@ function buildMotos(){
   goTab('motos');
   renderMotos();
 }
-function motoRider(r){ return Object.assign({}, r, {finishes:[null,null,null]}); }
+function motoRider(r){ return Object.assign({}, r, {finishes:[null,null,null], gates:[null,null,null]}); }
 
 function platesConflict(m){
   const seen={}, dup=[];
@@ -747,6 +784,7 @@ function renderMotos(){
   MOTOS.forEach((m,mi)=>{
     const conf=platesConflict(m);
     const solo=m.riders.length<2;
+    const gatesOn=motoGatesDrawn(m);
     html+='<div class="moto'+((solo||m.solo)?' flag':'')+'">';
     html+='<div class="moto-h"><div class="mnum">'+(mi+1)+'</div>'+
       '<div><div class="t">Moto '+(mi+1)+'</div>'+
@@ -755,6 +793,7 @@ function renderMotos(){
       (conf.length?'<svg viewBox="0 0 24 24" style="width:16px;height:16px;stroke:'+'var(--bad)'+';fill:none;stroke-width:2"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>':'')+
       '<button class="btn sm ghost" data-lock="'+mi+'">'+(m.locked?'Unlock':'Lock')+'</button>'+
       '</div></div>';
+    if(gatesOn) html+='<div class="motogate-h"><span class="mgl">R1</span><span class="mgl">R2</span><span class="mgl">R3</span></div>';
     m.riders.forEach((r,ri)=>{
       const sel = MOVE && MOVE.motoIdx===mi && MOVE.riderIdx===ri;
       const hint = lastRaced(r.riderId);
@@ -767,6 +806,7 @@ function renderMotos(){
         '</span>'+
         '<span class="cls '+r.cls+'">'+r.cls+'</span>'+cruiserTag(r)+
         '<span class="mv" data-mvfrom="'+mi+'" data-mvr="'+ri+'">Move</span>'+
+        (gatesOn?'<span class="mgates"><span class="mg">'+r.gates[0]+'</span><span class="mg">'+r.gates[1]+'</span><span class="mg">'+r.gates[2]+'</span></span>':'')+
         '</div>';
     });
     if(solo||m.solo) html+='<div class="banner warn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>Only 1 rider — move someone in, or move this rider to another moto.</div>';
@@ -800,11 +840,120 @@ function doMove(dest){
   if(dest==='cancel'){ MOVE=null; renderMotos(); return; }
   const from=MOTOS[MOVE.motoIdx];
   const [rider]=from.riders.splice(MOVE.riderIdx,1);
-  if(dest==='new'){ MOTOS.push({cat:rider.raceCat||rider.category, riders:[rider], locked:false}); }
-  else { MOTOS[+dest].riders.push(rider); }
+  let destMoto;
+  if(dest==='new'){ destMoto={cat:rider.raceCat||rider.category, riders:[rider], locked:false}; MOTOS.push(destMoto); }
+  else { destMoto=MOTOS[+dest]; destMoto.riders.push(rider); }
+  // Moving changes moto sizes, so any prior gate draw for these two motos is stale — clear it.
+  clearGates_(from); clearGates_(destMoto);
   MOTOS=MOTOS.filter(m=>m.riders.length>0);
   MOVE=null;
   renderMotos();
+}
+function clearGates_(m){ if(m && m.riders) m.riders.forEach(r=>{ r.gates=[null,null,null]; }); }
+
+/* ============================================================
+   GATES — random gate (lane) draw. There are 8 physical gates on
+   the start hill, so every race draws from the full 1..8 pool even
+   when a moto has fewer than 8 riders (e.g. a 2-rider moto might pull
+   gates 5 and 2). Each of the 3 races is drawn with no two riders
+   sharing a gate in a race, AND no rider drawing the same gate in more
+   than one of their 3 races. Race-day only; never written to the Sheet,
+   but published to the live view so read-only devices see it.
+   ============================================================ */
+const GATE_COUNT = 8;   // start-hill gates; the draw pool is always this many
+
+document.getElementById('drawGates').addEventListener('click', drawGates);
+document.getElementById('redrawGates').addEventListener('click', drawGates);
+
+function shuffle_(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=a[i]; a[i]=a[j]; a[j]=t; } return a; }
+
+function drawGates(){
+  if(!MOTOS.length){ toast('Build motos first','bad'); return; }
+  MOTOS.forEach(m=>{
+    const assigned=drawMotoGates_(m.riders.length);
+    m.riders.forEach((r,i)=>{ r.gates=assigned[i]; });
+  });
+  const total=MOTOS.reduce((n,m)=>n+m.riders.length,0);
+  const sub=document.getElementById('gatesSub');
+  if(sub) sub.textContent = MOTOS.length+' motos · '+total+' riders · random draw (8 gates, no repeats)';
+  renderMotos();                // gates now show inline on the Motos page
+  renderGates();                // and on the Staging page
+  publishNow();                 // push gates to the live view for read-only devices
+  toast('Gates drawn ✓','ok');
+}
+
+/* Build a valid gate draw for one moto of N riders:
+   - each of the 3 races uses N distinct gates from the 8-gate pool
+   - no rider gets the same gate in more than one of their 3 races
+   Primary path is a genuine random draw, race by race, picking each
+   rider a random gate that's still free in that race and that the rider
+   hasn't already used. With 8 gates and at most 8 riders there's always
+   room, so this succeeds essentially every time; a deterministic cyclic
+   construction is kept as a guaranteed fallback so a draw can never fail
+   or repeat a gate for a rider. Returns an array of [g1,g2,g3] per rider. */
+function drawMotoGates_(N){
+  const POOL=Math.max(GATE_COUNT, N);                     // 8 gates normally
+  const gates=Array.from({length:N}, ()=>[null,null,null]);
+  for(let race=0; race<3; race++){
+    let placed=false;
+    for(let attempt=0; attempt<80 && !placed; attempt++){
+      const used=new Set(), tentative=new Array(N).fill(0);
+      const order=shuffle_(Array.from({length:N},(_,i)=>i));   // random rider order each try
+      let good=true;
+      for(const i of order){
+        const prev=gates[i];                              // this rider's earlier races
+        const choices=[];
+        for(let g=1; g<=POOL; g++){ if(!used.has(g) && prev.indexOf(g)===-1) choices.push(g); }
+        if(!choices.length){ good=false; break; }         // dead end — retry the whole race
+        const pick=choices[Math.floor(Math.random()*choices.length)];
+        tentative[i]=pick; used.add(pick);
+      }
+      if(good){ for(let i=0;i<N;i++) gates[i][race]=tentative[i]; placed=true; }
+    }
+    if(!placed){                                          // guaranteed fallback (never repeats a gate)
+      const offs=shuffle_(Array.from({length:POOL},(_,i)=>i)).slice(0,3);   // 3 distinct offsets
+      const slot=shuffle_(Array.from({length:N},(_,i)=>i));                 // random rider→slot
+      for(let k=0;k<N;k++){ const rider=slot[k]; for(let r=0;r<3;r++){ gates[rider][r]=((k+offs[r])%POOL)+1; } }
+      break;                                              // fallback fills all 3 races at once
+    }
+  }
+  return gates;
+}
+
+function motoGatesDrawn(m){ return m.riders.length>0 && m.riders.every(r=> r.gates && r.gates.every(g=> g!=null)); }
+
+function renderGates(){
+  const wrap=document.getElementById('gatesWrap');
+  if(!wrap) return;
+  if(!MOTOS.length){
+    wrap.innerHTML='<div class="empty"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="4" height="14" rx="1"/><rect x="10" y="5" width="4" height="14" rx="1"/><rect x="17" y="5" width="4" height="14" rx="1"/></svg><p>No motos yet.<br>Build motos, then tap “Draw gates”.</p></div>';
+    return;
+  }
+  if(!MOTOS.some(motoGatesDrawn)){
+    wrap.innerHTML='<div class="empty"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="4" height="14" rx="1"/><rect x="10" y="5" width="4" height="14" rx="1"/><rect x="17" y="5" width="4" height="14" rx="1"/></svg><p>Motos are built.<br>Tap “Draw gates” to assign lanes for all 3 races.</p></div>';
+    return;
+  }
+  let html='';
+  MOTOS.forEach((m,mi)=>{
+    const drawn=motoGatesDrawn(m);
+    html+='<div class="moto"><div class="moto-h"><div class="mnum">'+(mi+1)+'</div>'+
+      '<div><div class="t">Moto '+(mi+1)+'</div>'+
+      '<div class="s">'+m.riders.length+' rider'+(m.riders.length!==1?'s':'')+'</div></div></div>';
+    if(!drawn){
+      html+='<div class="banner warn"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>Gates not drawn for this moto — tap “Draw gates”.</div>';
+    }else{
+      html+='<div class="gaterow ghead"><span class="glbl">Rider</span><span>Race 1</span><span>Race 2</span><span>Race 3</span></div>';
+      m.riders.forEach(r=>{
+        html+='<div class="gaterow"><div class="grname">'+
+          '<span class="mplate '+plateClass(r)+'">'+esc(r.plate)+'</span>'+
+          '<span class="nm">'+esc(r.first)+' '+esc(r.last)+'</span></div>'+
+          r.gates.map(g=>'<div class="gate">'+g+'</div>').join('')+
+          '</div>';
+      });
+    }
+    html+='</div>';
+  });
+  wrap.innerHTML=html;
 }
 
 /* ============================================================
@@ -945,7 +1094,8 @@ async function publishToLive(manual){
     riders: m.riders.map(r=>({
       riderId:r.riderId, first:r.first, last:r.last, plate:r.plate,
       cls:r.cls, sex:r.sex, age:r.age, category:r.category, cruiser:!!r.cruiser,
-      bumped:!!r.bumped, finishes:(r.finishes||[null,null,null]).slice()
+      bumped:!!r.bumped, finishes:(r.finishes||[null,null,null]).slice(),
+      gates:(r.gates||[null,null,null]).slice()
     }))
   }));
   const btn=document.getElementById('bbPublish'); const orig=btn.textContent;
@@ -956,11 +1106,6 @@ async function publishToLive(manual){
     LIVE_META = { publishedAt:new Date().toISOString(), publishedBy:DEVICE_ID };
     if(manual){
       toast('Published to live ✓','ok');
-      setTimeout(()=>{
-        if(confirm('Published.\n\nHand off this device to View mode now?\n\n(Do this once check-in & motos are set, so the finish-line device can take over scoring without conflicts.)')){
-          exitRunMode();
-        }
-      }, 200);
     }
     else { const t=document.getElementById('connTxt'); if(t){ const o=t.textContent; t.textContent='saved ✓'; setTimeout(()=>{ if(t.textContent==='saved ✓') t.textContent=o; },1500); } }
   }catch(e){ if(manual) toast('Publish failed: '+e.message,'bad'); }
@@ -1115,7 +1260,7 @@ function restoreFromLive(){
   if(!LIVE) return;
   if(LIVE.motos){
     MOTOS = LIVE.motos.map(m=>({ cat:m.cat||'', locked:true, solo:(m.riders||[]).length<2,
-      riders:(m.riders||[]).map(r=>Object.assign({}, r, { finishes:(r.finishes||[null,null,null]).slice() })) }));
+      riders:(m.riders||[]).map(r=>Object.assign({}, r, { finishes:(r.finishes||[null,null,null]).slice(), gates:(r.gates||[null,null,null]).slice() })) }));
   }
   const inSet=new Set(LIVE.checkedIn||[]);
   RIDERS.forEach(r=> r.checkedIn = inSet.has(r.riderId));
@@ -1128,7 +1273,7 @@ function exitRunMode(){
 }
 // header chip: tap to lock back to view, or open unlock prompt
 document.getElementById('modeBtn').addEventListener('click', ()=>{
-  if(runMode){ if(confirm('Switch this device back to view-only?')) exitRunMode(); }
+  if(runMode){ exitRunMode(); }
   else { promptUnlock(); }
 });
 function promptUnlock(){
@@ -1219,7 +1364,7 @@ async function loadSeasons(){
    ============================================================ */
 const HELP_TOPICS = [
   { icon:'\u{1F3C1}', title:'Race night — quick guide', html:`
-    <div class="tip"><b>The flow:</b> Check riders in → Build motos → Adjust &amp; lock → Score 3 races → Finish &amp; save.</div>
+    <div class="tip"><b>The flow:</b> Check riders in → Build motos → Adjust &amp; lock → Draw gates → Score 3 races → Finish &amp; save.</div>
     <h4>Before you start</h4>
     <ol>
       <li>Open the app and <b>unlock this device</b>: tap the <b>View</b> chip top-right, enter the password. It turns green and reads <b>Run</b>.</li>
@@ -1237,7 +1382,14 @@ const HELP_TOPICS = [
       <li>Yellow banner = moto has only 1 rider (move someone in). Red banner = same plate twice in one moto (change one).</li>
       <li><b>Lock</b> each moto when happy.</li>
     </ol>
-    <h4>3. Score the day</h4>
+    <h4>3. Draw the gates</h4>
+    <ol>
+      <li>Once the motos are set, tap <b>Draw gates</b> (top of the Motos tab, or on the Staging tab).</li>
+      <li>Each rider gets a random gate for all three races, drawn from the full <b>8 gates</b> — <b>no rider ever repeats a gate</b>, and no two riders share a gate in the same race.</li>
+      <li>Gates show on each rider's row on Motos, and on the <b>Staging</b> tab — a clean sheet to project or print at the line.</li>
+      <li>Tap <b>Draw gates</b> again anytime to re-draw. Moving a rider after a draw clears that moto's gates — just re-draw.</li>
+    </ol>
+    <h4>4. Score the day</h4>
     <p>Each moto races <b>three times</b> — lowest combined finish wins (like golf).</p>
     <ol>
       <li>Scoring tab → pick the round (Race 1, 2, or 3) at the top.</li>
@@ -1245,7 +1397,7 @@ const HELP_TOPICS = [
       <li>Score everyone in Race 1, then Race 2, then Race 3.</li>
       <li>Once a moto has all 3 races, placings and club points show automatically.</li>
     </ol>
-    <h4>4. Finish &amp; save</h4>
+    <h4>5. Finish &amp; save</h4>
     <ol>
       <li>When every moto is fully scored, tap <b>Finish &amp; save race day</b> and confirm.</li>
       <li>Results write to the Sheet and the Points standings update.</li>
@@ -1256,12 +1408,31 @@ const HELP_TOPICS = [
     <h4>Running two devices (handoff)</h4>
     <p>Best practice: <b>one device is live at a time.</b> A typical night:</p>
     <ol>
-      <li><b>Device A</b> checks riders in and builds motos, then taps <b>Publish to live</b>. When it asks <b>"Hand off to View?"</b>, tap Yes — Device A is now read-only.</li>
+      <li><b>Device A</b> checks riders in, builds motos, and draws gates, then taps <b>Publish to live</b>. To make it read-only, tap the green <b>Run</b> chip (top-right) — it flips straight to <b>View</b>, no prompt.</li>
       <li><b>Device B</b> (finish line) unlocks, taps <b>Yes</b> to <b>restore the race</b>, scores the rounds, and taps <b>Finish &amp; save race day</b>.</li>
     </ol>
     <p>If you unlock a second device while another is still running, the app warns you — running two at once can overwrite each other's work. Stick to one live device and the handoff above.</p>
     <p>This is handy for the <b>15-minute protest window</b>: publish the results, let everyone see them, then tap <b>Finish &amp; save race day</b> once the window closes. Saving finalizes the standings and clears the live view automatically.</p>
     <div class="tip"><b>Accidental reload?</b> In Run mode the app saves your progress in the background — motos when you lock them, check-ins and scores every 20 seconds. If the page reloads, re-enter the password and tap <b>Yes</b> when it asks to restore the race in progress. Tip: tap <b>Publish to live</b> after finishing a round so the latest scores are saved right away.</div>
+  `},
+  { icon:'\u{1F6A6}', title:'Gates & staging', html:`
+    <p>After the motos are built and arranged, tap <b>Draw gates</b> to assign starting gates for the three races.</p>
+    <h4>How the draw works</h4>
+    <ul>
+      <li>Every rider gets a <b>random gate for each of the 3 races</b>, drawn from all <b>8 gates</b> — even a small moto uses the full hill (a 2-rider moto might pull gates 6 and 8).</li>
+      <li><b>No rider ever gets the same gate twice</b> across their three races, and no two riders share a gate in the same race.</li>
+      <li>Tap <b>Draw gates</b> again to re-draw the whole field at any time.</li>
+    </ul>
+    <h4>Where to find them</h4>
+    <ul>
+      <li>On the <b>Motos</b> tab, gates appear as three columns (R1 / R2 / R3) on each rider's row once drawn.</li>
+      <li>The <b>Staging</b> tab is the clean, full-screen version — one card per moto — ideal to project or print at the start line.</li>
+    </ul>
+    <h4>Good to know</h4>
+    <ul>
+      <li>Moving a rider between motos after a draw clears that moto's gates (its size changed) — just tap <b>Draw gates</b> again.</li>
+      <li>Gates are for <b>race day only</b>: they publish to the live view for parents, but they're <b>not written to the season Sheet</b>.</li>
+    </ul>
   `},
   { icon:'\u{1F4CB}', title:'Managing riders, plates & classes', html:`
     <h4>Add a rider</h4>
